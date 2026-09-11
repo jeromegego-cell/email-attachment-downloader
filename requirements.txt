@@ -1,0 +1,20 @@
+# Enterprise Email Ingestion Engine - Core Dependencies
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+pyyaml>=6.0.1
+puremagic>=1.20
+tenacity>=8.2.3
+sqlalchemy>=2.0.25
+aiosqlite>=0.19.0
+click>=8.1.7
+
+# Official Cloud Provider SDKs
+msgraph-sdk>=1.0.0
+azure-identity>=1.15.0
+google-api-python-client>=2.115.0
+google-auth>=2.27.0
+google-cloud-pubsub>=2.19.0
+
+# Development and Testing
+pytest>=7.4.4
+pytest-asyncio>=0.23.3

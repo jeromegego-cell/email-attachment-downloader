@@ -1,0 +1,61 @@
+# ==============================================================================
+# Enterprise Email Ingestion Engine - Default Configuration
+# ==============================================================================
+
+environment: "development"
+
+# 1. Local Storage Hierarchy
+storage:
+  download_dir: "Auto_download_email"
+  quarantine_dir: "Auto_download_email/quarantine"
+  staging_dir: "Auto_download_email/.staging"
+  enable_content_addressable_storage: true
+
+# 2. Defensive Security and MIME Filtering
+security:
+  filter_signatures: true
+  signature_max_size_bytes: 15360      # Drop inline images < 15 KB matching signature rules
+  verify_magic_headers: true           # True header sniffing via puremagic
+  quarantine_on_mismatch: true         # Quarantine if extension does not match magic bytes
+  max_zip_decompression_ratio: 10.0    # Zip bomb defense threshold (ratio > 10 is rejected)
+  max_attachment_size_bytes: 104857600 # 100 MB max file size
+
+# 3. Document Intelligence & Anomaly Resolution
+intelligence:
+  generate_context_sidecars: true      # Produces email_context.md and context.json
+  fuzzy_similarity_threshold: 0.80     # Score >= 80% marks same-name files as revisions (v2)
+  duplicate_detection_mode: "interactive" # Options: interactive, auto_dedupe, alert_only
+
+# 4. State Ledger & ACID Database
+database:
+  db_url: "sqlite:///email_ingestion_state.db"
+
+# 5. Providers
+mock_provider:
+  enabled: true                        # Enabled by default for local testing and demonstration
+
+gmail:
+  enabled: false
+  credentials_json: "credentials/google_credentials.json"
+  user_email: "me"
+
+microsoft:
+  enabled: false
+  client_id: "YOUR_AZURE_CLIENT_ID"
+  client_secret: "YOUR_AZURE_CLIENT_SECRET"
+  tenant_id: "YOUR_AZURE_TENANT_ID"
+  user_email: "user@yourcompany.com"
+
+imap:
+  enabled: false
+  host: "imap.gmail.com"               # Or outlook.office365.com / mail.yourcompany.com
+  port: 993
+  username: "your_email@gmail.com"
+  password: "YOUR_APP_PASSWORD"        # Use App Password if 2FA is enabled
+  mailbox: "INBOX"
+  use_ssl: true
+
+# 6. Active Plugins
+plugins:
+  - "desktop_notifier"
+  - "ai_summarizer"
