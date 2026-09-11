@@ -4,7 +4,10 @@ Enforces the standardized corporate folder hierarchy:
 Auto_download_email/<sanitized_sender>/<timestamp>_<hash_prefix>/
 """
 
+import hashlib
+import os
 import re
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 from typing import Tuple
@@ -37,12 +40,12 @@ class StorageLayoutManager:
     ) -> str:
         """Create a collision-proof delivery envelope folder name.
         
-        Example: '2026-09-11_13-15-00_3a8f9c'
+        Example: '2026-09-11_13-15-00_3a8f9c12'
         """
         timestamp_str = received_at.strftime("%Y-%m-%d_%H-%M-%S")
-        # Use first 6-8 chars of message id or hash
-        safe_hash = re.sub(r"[^\w]", "", message_id)[:8] or "000000"
-        return f"{timestamp_str}_{safe_hash}"
+        micro = f"_{received_at.microsecond:06d}" if getattr(received_at, "microsecond", 0) else ""
+        msg_hash = hashlib.sha256(str(message_id).encode("utf-8", errors="ignore")).hexdigest()[:8]
+        return f"{timestamp_str}{micro}_{msg_hash}"
 
     def get_envelope_directory(
         self,
@@ -56,6 +59,12 @@ class StorageLayoutManager:
         
         envelope_path = self.root_dir / sender_dir / envelope_name
         envelope_path.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(self.root_dir, 0o700)
+            os.chmod(self.root_dir / sender_dir, 0o700)
+            os.chmod(envelope_path, 0o700)
+        except OSError:
+            pass
         return envelope_path
 
     def update_master_index(self, entries: list) -> Path:
@@ -64,7 +73,13 @@ class StorageLayoutManager:
         Allows anyone opening the root folder to immediately view and access all downloads chronologically.
         """
         self.root_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(self.root_dir, 0o700)
+        except OSError:
+            pass
+
         index_file = self.root_dir / "INDEX.md"
+        temp_index = self.root_dir / ".tmp_INDEX.md"
 
         sorted_entries = sorted(entries, key=lambda x: str(x.get("received_at", "")), reverse=True)
 
@@ -79,8 +94,8 @@ class StorageLayoutManager:
 
         for e in sorted_entries:
             rec_date = str(e.get("received_at", "N/A"))
-            sender = e.get("sender", "unknown")
-            fname = e.get("filename", "unknown")
+            sender = str(e.get("sender", "unknown")).replace("|", "\\|").replace("\n", " ")
+            fname = str(e.get("filename", "unknown")).replace("|", "\\|").replace("\n", " ")
             size_b = e.get("size_bytes", 0)
             size_str = f"{size_b / 1024:.1f} KB" if size_b >= 1024 else f"{size_b} B"
             status = e.get("status", "CLEAN")
@@ -97,9 +112,20 @@ class StorageLayoutManager:
 
             envelope_dir = Path(rel_path).parent
             sidecar_file = self.root_dir / envelope_dir / "email_context.md"
-            sidecar_link = f" · [Context](./{envelope_dir}/email_context.md)" if sidecar_file.exists() else ""
-            lines.append(f"| {rec_date} | `{sender}` | **{fname}** | {size_str} | {status} | [Download](./{rel_path}){sidecar_link} |")
+
+            quoted_rel_path = urllib.parse.quote(rel_path.as_posix())
+            quoted_env_dir = urllib.parse.quote(envelope_dir.as_posix())
+            sidecar_link = f" · [Context](./{quoted_env_dir}/email_context.md)" if sidecar_file.exists() else ""
+            lines.append(f"| {rec_date} | `{sender}` | **{fname}** | {size_str} | {status} | [Download](./{quoted_rel_path}){sidecar_link} |")
 
         lines.append("")
-        index_file.write_text("\n".join(lines), encoding="utf-8")
+        content = "\n".join(lines)
+
+        # Atomic file write for index to prevent corrupt partial writes
+        temp_index.write_text(content, encoding="utf-8")
+        try:
+            os.chmod(temp_index, 0o600)
+        except OSError:
+            pass
+        os.replace(temp_index, index_file)
         return index_file

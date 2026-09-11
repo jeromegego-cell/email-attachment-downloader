@@ -4,9 +4,11 @@ Guarantees that files on disk are never partially written, enforce
 strict maximum file size ceilings to prevent DoS, and apply secure POSIX permissions (0600).
 """
 
+import errno
 import hashlib
 import os
 import shutil
+import time
 import uuid
 from pathlib import Path
 from typing import Tuple, BinaryIO
@@ -26,12 +28,32 @@ class AtomicFileWriter:
         self.default_max_bytes = default_max_bytes
         self.staging_dir.mkdir(parents=True, exist_ok=True)
         self.cas_blob_dir.mkdir(parents=True, exist_ok=True)
-        # Enforce secure directory permissions
+        # Enforce secure directory permissions (0700)
         try:
             os.chmod(self.staging_dir, 0o700)
             os.chmod(self.cas_blob_dir, 0o700)
         except OSError:
             pass
+
+    def _commit_staged_file(self, temp_path: Path, destination_path: Path) -> None:
+        """Atomically commit staged temporary file to final destination with cross-device fallback."""
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(temp_path, 0o600)
+        except OSError:
+            pass
+
+        try:
+            os.replace(temp_path, destination_path)
+        except OSError as err:
+            if err.errno == errno.EXDEV:
+                shutil.move(str(temp_path), str(destination_path))
+                try:
+                    os.chmod(destination_path, 0o600)
+                except OSError:
+                    pass
+            else:
+                raise
 
     def write_bytes_atomically(
         self,
@@ -57,18 +79,14 @@ class AtomicFileWriter:
             sha256_hash = hasher.hexdigest()
             file_size = len(data)
 
-            # Restrict file permissions to 0600 (owner read/write only)
-            try:
-                os.chmod(temp_path, 0o600)
-            except OSError:
-                pass
-
-            # Atomic rename from staging to target destination
-            os.replace(temp_path, destination_path)
+            self._commit_staged_file(temp_path, destination_path)
             return sha256_hash, file_size
         except Exception:
             if temp_path.exists():
-                temp_path.unlink()
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
             raise
 
     def write_stream_atomically(
@@ -101,19 +119,31 @@ class AtomicFileWriter:
 
             sha256_hash = hasher.hexdigest()
 
-            # Restrict file permissions to 0600
-            try:
-                os.chmod(temp_path, 0o600)
-            except OSError:
-                pass
-
-            # Atomic replace into final destination
-            os.replace(temp_path, destination_path)
+            self._commit_staged_file(temp_path, destination_path)
             return sha256_hash, total_bytes
         except Exception:
             if temp_path.exists():
-                temp_path.unlink()
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
             raise
+
+    def cleanup_stale_staging(self, max_age_seconds: int = 3600) -> int:
+        """Purge orphaned temporary staging files older than the specified age."""
+        purged_count = 0
+        now = time.time()
+        try:
+            for part_file in self.staging_dir.glob("tmp_*.part"):
+                try:
+                    if (now - part_file.stat().st_mtime) > max_age_seconds:
+                        part_file.unlink()
+                        purged_count += 1
+                except OSError:
+                    pass
+        except OSError:
+            pass
+        return purged_count
 
     def link_cas_duplicate(
         self,
@@ -126,3 +156,7 @@ class AtomicFileWriter:
             os.link(existing_source_path, destination_path)
         except (OSError, NotImplementedError):
             shutil.copy2(existing_source_path, destination_path)
+        try:
+            os.chmod(destination_path, 0o600)
+        except OSError:
+            pass

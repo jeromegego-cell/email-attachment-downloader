@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, BinaryIO
 from email_ingestion.connectors.base import BaseEmailConnector, EmailEnvelope, AttachmentStub
+from email_ingestion.connectors.resilience import retry_with_backoff
 
 
 class GmailConnector(BaseEmailConnector):
@@ -159,6 +160,7 @@ class GmailConnector(BaseEmailConnector):
             raw_headers=headers
         )
 
+    @retry_with_backoff(retries=3, base_delay=1.0)
     def download_attachment_stream(
         self,
         message_id: str,

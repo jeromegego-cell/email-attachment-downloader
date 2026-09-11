@@ -25,13 +25,14 @@ class MagicVerifier:
         "application/javascript",
         "text/javascript",
         "application/x-ms-shortcut",
+        "application/x-ole-storage",
     }
 
     # Dangerous extensions that must never be accepted as benign documents
     DANGEROUS_EXTENSIONS: Set[str] = {
         ".exe", ".dll", ".bat", ".cmd", ".com", ".scr", ".sh", ".bin",
         ".vbs", ".ps1", ".hta", ".cpl", ".msi", ".jar", ".iso", ".vhd",
-        ".wsf", ".gadget", ".reg", ".pif"
+        ".wsf", ".gadget", ".reg", ".pif", ".lnk", ".appx", ".deb", ".rpm"
     }
 
     # Standard safe extension mapping
@@ -57,20 +58,26 @@ class MagicVerifier:
         if not file_path.exists():
             return False, "unknown", "File does not exist"
 
-        file_size = file_path.stat().st_size
-        if file_size == 0:
-            return True, "application/octet-stream", None
-
         file_ext = file_path.suffix.lower()
 
-        # Rule 1: Outright rejection of dangerous extensions (e.g. .exe, .scr, .bat)
+        # Rule 1: Outright rejection of dangerous extensions (e.g. .exe, .scr, .bat, .lnk)
         if file_ext in cls.DANGEROUS_EXTENSIONS:
             return False, "application/x-executable", f"File declares dangerous executable extension: {file_ext}"
 
-        # Rule 2: Fast byte signature check for binary executable headers
+        file_size = file_path.stat().st_size
+
+        # Rule 2: Zero-byte file handling
+        if file_size == 0:
+            if file_ext in cls.SAFE_EXTENSION_MIMES and file_ext not in {".txt", ".csv"}:
+                return False, "application/octet-stream", f"Zero-byte truncated file claiming document extension: {file_ext}"
+            if file_ext in {".txt", ".csv", ".json", ".xml", ".diff", ".log"}:
+                return True, "text/plain", None
+            return True, "application/octet-stream", None
+
+        # Rule 3: Fast byte signature check for binary executables, shortcuts, and scripts
         try:
             with open(file_path, "rb") as f:
-                header = f.read(1024)
+                header = f.read(8192)
 
             # Windows PE (MZ)
             if header.startswith(b"MZ"):
@@ -79,13 +86,39 @@ class MagicVerifier:
             if header.startswith(b"\x7fELF"):
                 return False, "application/x-executable", "Linux ELF executable header detected"
             # Mach-O
-            if header[:4] in {b"\xfe\xed\xfa\xce", b"\xfe\xed\xfa\xcf", b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe"}:
+            if header[:4] in {b"\xfe\xed\xfa\xce", b"\xfe\xed\xfa\xcf", b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"}:
                 return False, "application/x-mach-binary", "Mach-O executable header detected"
+            # Windows LNK shortcut
+            if header.startswith(b"\x4c\x00\x00\x00\x01\x14\x02\x00"):
+                return False, "application/x-ms-shortcut", "Windows LNK shortcut file detected"
+
+            # Check for embedded script execution in text/markup formats
+            if file_ext in {".svg", ".html", ".htm", ".xml", ".txt"}:
+                header_lower = header.lower()
+                dangerous_tags = [
+                    b"<script", b"javascript:", b"vbscript:",
+                    b"<hta:application", b"onload=", b"onerror="
+                ]
+                if any(tag in header_lower for tag in dangerous_tags):
+                    return False, "text/html", f"Active script execution payload detected in {file_ext}"
 
         except Exception as err:
             return False, "unknown", f"Failed reading file header: {str(err)}"
 
-        # Rule 3: Inspection via puremagic
+        # Rule 4: Deep inspection of ZIP-based Office XML documents for disguised VBA macros
+        if file_ext in {".docx", ".xlsx", ".pptx"}:
+            try:
+                import zipfile
+                if zipfile.is_zipfile(file_path):
+                    with zipfile.ZipFile(file_path, "r") as zf:
+                        for entry in zf.namelist():
+                            lower_entry = entry.lower()
+                            if "vbaproject.bin" in lower_entry or "vbalegacy" in lower_entry:
+                                return False, "application/vnd.ms-office.vba", f"Dangerous VBA macro payload detected inside disguised {file_ext}"
+            except Exception:
+                pass
+
+        # Rule 5: Inspection via puremagic
         try:
             detected_matches = puremagic.magic_file(str(file_path))
             if not detected_matches:
@@ -102,7 +135,7 @@ class MagicVerifier:
                 if match.mime_type in cls.DANGEROUS_MIMES or match.extension in cls.DANGEROUS_EXTENSIONS:
                     return False, match.mime_type or "application/x-executable", f"Dangerous executable magic detected ({match.mime_type or match.extension})"
 
-            # Rule 4: Parity check for declared safe document types
+            # Rule 6: Parity check for declared safe document types
             if file_ext in cls.SAFE_EXTENSION_MIMES:
                 allowed_mimes = cls.SAFE_EXTENSION_MIMES[file_ext]
                 # If puremagic strongly matched a completely different media type (e.g. audio/video or archive for a pdf)

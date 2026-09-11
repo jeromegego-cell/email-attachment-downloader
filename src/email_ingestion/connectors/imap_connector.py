@@ -12,6 +12,7 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Optional, BinaryIO, Dict, Any
 from email_ingestion.connectors.base import BaseEmailConnector, EmailEnvelope, AttachmentStub
+from email_ingestion.connectors.resilience import retry_with_backoff
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,8 @@ class IMAPConnector(BaseEmailConnector):
         username: Optional[str] = None,
         password: Optional[str] = None,
         mailbox: str = "INBOX",
-        use_ssl: bool = True
+        use_ssl: bool = True,
+        timeout: int = 30
     ):
         self.host = host
         self.port = port
@@ -34,23 +36,25 @@ class IMAPConnector(BaseEmailConnector):
         self.password = password
         self.mailbox = mailbox
         self.use_ssl = use_ssl
+        self.timeout = timeout
         self._client: Optional[imaplib.IMAP4] = None
         self._cached_payloads: Dict[str, bytes] = {}
+        self._msg_id_to_mid: Dict[str, str] = {}
 
     @property
     def provider_name(self) -> str:
         return "IMAP"
 
     def connect(self) -> bool:
-        """Connect and authenticate to the IMAP server."""
+        """Connect and authenticate to the IMAP server with timeout."""
         if not (self.host and self.username and self.password):
             return False
 
         try:
             if self.use_ssl:
-                self._client = imaplib.IMAP4_SSL(self.host, self.port)
+                self._client = imaplib.IMAP4_SSL(self.host, self.port, timeout=self.timeout)
             else:
-                self._client = imaplib.IMAP4(self.host, self.port)
+                self._client = imaplib.IMAP4(self.host, self.port, timeout=self.timeout)
 
             self._client.login(self.username, self.password)
             self._client.select(self.mailbox)
@@ -103,6 +107,7 @@ class IMAPConnector(BaseEmailConnector):
                 sender = self._decode_mime_header(msg.get("From", "unknown@unknown.com"))
                 subject = self._decode_mime_header(msg.get("Subject", ""))
                 msg_id = msg.get("Message-ID", f"imap_{mid}").strip("<>")
+                self._msg_id_to_mid[msg_id] = mid
                 thread_id = msg.get("In-Reply-To", msg.get("References", msg_id)).split()[0].strip("<>")
 
                 # Date parsing
@@ -176,5 +181,26 @@ class IMAPConnector(BaseEmailConnector):
         return io.BytesIO(payload)
 
     def acknowledge_processed(self, message_id: str) -> None:
-        """Acknowledge message processing."""
-        pass
+        r"""Acknowledge message processing by flagging the message as \Seen."""
+        if not self._client or message_id not in self._msg_id_to_mid:
+            return
+        try:
+            mid = self._msg_id_to_mid[message_id]
+            self._client.store(mid, "+FLAGS", "\\Seen")
+        except Exception as e:
+            logger.debug(f"Could not flag message {message_id} as \\Seen: {e}")
+
+    def disconnect(self) -> None:
+        """Safely close and log out of the IMAP connection."""
+        if self._client:
+            try:
+                self._client.close()
+            except Exception:
+                pass
+            try:
+                self._client.logout()
+            except Exception:
+                pass
+            self._client = None
+        self._cached_payloads.clear()
+        self._msg_id_to_mid.clear()

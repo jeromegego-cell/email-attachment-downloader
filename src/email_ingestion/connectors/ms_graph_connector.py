@@ -8,6 +8,7 @@ import io
 from datetime import datetime, timezone
 from typing import List, Optional, BinaryIO
 from email_ingestion.connectors.base import BaseEmailConnector, EmailEnvelope, AttachmentStub
+from email_ingestion.connectors.resilience import retry_with_backoff
 
 
 class MSGraphConnector(BaseEmailConnector):

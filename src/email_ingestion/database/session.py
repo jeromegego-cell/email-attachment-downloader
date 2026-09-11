@@ -26,6 +26,7 @@ class DatabaseManager:
         self.engine = create_engine(
             self.db_url,
             connect_args=connect_args,
+            pool_pre_ping=True,
             echo=False,
             future=True
         )
@@ -142,3 +143,21 @@ class DatabaseManager:
                     "local_storage_path": att.local_storage_path
                 })
             return entries
+
+    def checkpoint(self, mode: str = "PASSIVE") -> None:
+        """Execute a WAL checkpoint to flush SQLite write-ahead logs to the primary database file."""
+        if self.db_url.startswith("sqlite"):
+            try:
+                with self.engine.connect() as conn:
+                    conn.exec_driver_sql(f"PRAGMA wal_checkpoint({mode});")
+            except Exception:
+                pass
+
+    def close(self) -> None:
+        """Safely flush WAL checkpoints and dispose database connection pool."""
+        try:
+            self.checkpoint(mode="TRUNCATE")
+        except Exception:
+            pass
+        self.engine.dispose()
+
