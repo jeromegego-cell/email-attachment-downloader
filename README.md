@@ -2,6 +2,9 @@
 
 An enterprise-grade, production-ready Python automation engine designed to securely ingest, filter, validate, contextualize, and download email attachments from **Standard IMAP (Gmail, Outlook, Corporate Mail)**, **Google Workspace / Gmail APIs**, and **Microsoft 365 / Graph APIs**.
 
+> [!TIP]
+> **Project Master Specification & Roadmap:** Read the comprehensive master architecture document at [**Enterprise_Email_Ingestion_Gateway_Master_Plan.md**](./Enterprise_Email_Ingestion_Gateway_Master_Plan.md) (interactive HTML version available at [**Enterprise_Email_Ingestion_Gateway_Master_Plan.html**](./Enterprise_Email_Ingestion_Gateway_Master_Plan.html)).
+
 ---
 
 ## Core Architecture & Supervisor Fulfillment
@@ -47,6 +50,8 @@ email_attachment_downloader/
 ├── pyproject.toml                     # Modern package build configuration
 ├── requirements.txt                   # Dependency specifications
 ├── README.md                          # Documentation & Quickstart
+├── Enterprise_Email_Ingestion_Gateway_Master_Plan.md   # Project Master Specification (Markdown)
+├── Enterprise_Email_Ingestion_Gateway_Master_Plan.html # Interactive Specification UI
 │
 ├── Auto_download_email/               # Root downloads folder
 │   ├── INDEX.md                       # Master chronological table with clickable links
