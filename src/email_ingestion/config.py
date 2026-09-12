@@ -121,7 +121,7 @@ class EngineSettings(BaseSettings):
     
     # Enabled Plugins
     plugins: List[str] = Field(
-        default_factory=lambda: ["desktop_notifier", "ai_summarizer"],
+        default_factory=lambda: ["ai_summarizer"],
         description="List of plugin identifiers to activate."
     )
 

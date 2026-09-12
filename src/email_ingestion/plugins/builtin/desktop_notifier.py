@@ -4,6 +4,7 @@ Displays visual desktop notifications (via Linux notify-send) or formatted
 terminal alerts whenever duplicate anomalies or security quarantines occur.
 """
 
+import os
 import subprocess
 import shutil
 from typing import Dict, Any, Optional
@@ -20,10 +21,12 @@ class DesktopNotifierPlugin(BasePlugin):
         return "desktop_notifier"
 
     def __init__(self):
-        self._notify_send_available = shutil.which("notify-send") is not None
+        # Strictly disabled by default to prevent desktop popup noise
+        self._notify_send_enabled = os.environ.get("EMAIL_INGESTION_ENABLE_DESKTOP_NOTIFY", "").lower() in {"1", "true"}
+        self._notify_send_available = self._notify_send_enabled and (shutil.which("notify-send") is not None)
 
     def _send_desktop_notification(self, title: str, message: str, urgency: str = "normal") -> None:
-        """Send a native Linux desktop notification if notify-send exists."""
+        """Send desktop notification only if explicitly enabled via environment variable."""
         if self._notify_send_available:
             try:
                 subprocess.run(

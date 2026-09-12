@@ -57,5 +57,4 @@ imap:
 
 # 6. Active Plugins
 plugins:
-  - "desktop_notifier"
   - "ai_summarizer"
