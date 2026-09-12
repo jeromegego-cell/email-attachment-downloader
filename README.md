@@ -138,29 +138,36 @@ To guarantee maximum reliability and eliminate fragile hand-rolled logic, the en
 
 ---
 
-## Quick Start & CLI Usage
+## Quick Start & Execution
 
-### 1. Preflight Health Check & Validation
+### 1. Direct Execution from Source (Zero Installation Required)
+Run commands directly with Python from the repository root:
+```bash
+# Run preflight validation
+python3 run.py validate
+
+# Run offline demo
+python3 run.py demo
+
+# Interactive configuration wizard
+python3 run.py configure
+
+# Live email synchronization
+python3 run.py sync
+```
+*(Or use `python3 main.py <command>`)*
+
+### 2. Automated Installer Script (`install.py`)
+For users setting up a local dedicated environment automatically:
+```bash
+# Cross-platform automated setup (creates virtualenv & configures dependencies)
+python3 install.py
+```
+
+### 3. Verification & Preflight Health Check
 Verify configuration syntax, database connectivity, and folder write permissions:
 ```bash
-email-ingestion validate
-```
-
-### 2. Run Verification Tests
-```bash
-pytest -v
-```
-All 33 test cases pass in ~0.35s across Linux, macOS, and Windows.
-
-### 3. Interactive Configuration Wizard
-Quickly configure your Gmail, Outlook, or corporate IMAP credentials with automatic TLS verification:
-```bash
-email-ingestion configure
-```
-
-### 4. Test Provider Authentication (Without Downloading)
-```bash
-email-ingestion test-connection
+python3 run.py validate
 ```
 
 ### 5. Run the Live Offline Demonstration

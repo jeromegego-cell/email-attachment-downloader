@@ -55,8 +55,8 @@ class ArchiveGuard:
 
                     filename = info.filename.replace("\\", "/")
 
-                    # 1. Zip Slip check (traversal tokens, root slashes, Windows drive letters)
-                    if ".." in filename or filename.startswith("/") or re.match(r"^[a-zA-Z]:", filename):
+                    # 1. Zip Slip check (traversal tokens, root slashes, Windows drive letters, null bytes)
+                    if ".." in filename or filename.startswith("/") or re.match(r"^[a-zA-Z]:", filename) or "\x00" in filename:
                         return False, f"Zip Slip path traversal detected: {info.filename}"
 
                     # 2. Symlink check via POSIX external_attr (prevents symlink-based traversal)
@@ -107,8 +107,8 @@ class ArchiveGuard:
 
                     filename = member.name.replace("\\", "/")
 
-                    # Tar Slip check
-                    if ".." in filename or filename.startswith("/") or re.match(r"^[a-zA-Z]:", filename):
+                    # Tar Slip check (traversal tokens, root slashes, Windows drive letters, null bytes)
+                    if ".." in filename or filename.startswith("/") or re.match(r"^[a-zA-Z]:", filename) or "\x00" in filename:
                         return False, f"Tar Slip path traversal detected: {member.name}"
 
                     # Symlink / Hardlink / Device Node check

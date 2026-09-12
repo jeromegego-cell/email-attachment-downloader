@@ -94,21 +94,32 @@ class MagicVerifier:
             if header.startswith(b"\x4c\x00\x00\x00\x01\x14\x02\x00"):
                 return False, "application/x-ms-shortcut", "Windows LNK shortcut file detected"
 
-            # Check for embedded script execution in text/markup formats
+            # Check for embedded script execution in text/markup formats (scan up to 2MB to prevent truncation bypass)
             if file_ext in {".svg", ".html", ".htm", ".xml", ".txt"}:
-                header_lower = header.lower()
+                with open(file_path, "rb") as f_text:
+                    sample = f_text.read(2097152).lower()
                 dangerous_tags = [
                     b"<script", b"javascript:", b"vbscript:",
-                    b"<hta:application", b"onload=", b"onerror="
+                    b"<hta:application", b"onload=", b"onerror=",
+                    b"<iframe", b"data:text/html"
                 ]
-                if any(tag in header_lower for tag in dangerous_tags):
+                if any(tag in sample for tag in dangerous_tags):
                     return False, "text/html", f"Active script execution payload detected in {file_ext}"
 
-            # Check for PDF active code execution (/JavaScript, /Launch)
+            # Check for PDF active code execution (/JavaScript, /Launch, /EmbeddedFiles) (scan up to 5MB to prevent truncation bypass)
             if file_ext == ".pdf" and b"%PDF-" in header:
-                header_lower = header.lower()
-                if any(x in header_lower for x in [b"/javascript", b"/js ", b"/launch"]):
+                with open(file_path, "rb") as f_pdf:
+                    pdf_sample = f_pdf.read(5242880).lower()
+                if any(x in pdf_sample for x in [b"/javascript", b"/js ", b"/launch", b"/embeddedfiles"]):
                     return False, "application/pdf", "Dangerous active script or /Launch action embedded in PDF"
+
+            # Check for legacy Office OLE compound document VBA macros (.doc, .xls, .ppt)
+            if header.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+                with open(file_path, "rb") as f_ole:
+                    ole_sample = f_ole.read(2097152)
+                vba_markers = [b"_VBA_PROJECT", b"VBA\x00", b"dir\x00", b"Attribut\x00e\x00 \x00V\x00B\x00_"]
+                if any(marker in ole_sample for marker in vba_markers):
+                    return False, "application/vnd.ms-office.vba", "Legacy Office document containing embedded VBA macro code"
 
         except Exception as err:
             return False, "unknown", f"Failed reading file header: {str(err)}"

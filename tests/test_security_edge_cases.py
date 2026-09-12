@@ -187,3 +187,70 @@ def test_pdf_embedded_javascript_rejection(tmp_path):
     is_safe, mime, reason = MagicVerifier.inspect_file(evil_pdf)
     assert is_safe is False
     assert "javascript" in reason.lower() or "launch" in reason.lower()
+
+
+def test_pdf_payload_past_8192_bytes_rejection(tmp_path):
+    """Verify that PDF active script payloads placed past 8192 bytes (padding) are detected."""
+    evil_pdf = tmp_path / "delayed_payload.pdf"
+    # Pad 10KB of benign PDF comments before the malicious object
+    padding = b"% " + (b"A" * 10240) + b"\n"
+    evil_pdf.write_bytes(
+        b"%PDF-1.5\n" +
+        padding +
+        b"10 0 obj\n"
+        b"<< /Type /Action /S /Launch /F (cmd.exe) >>\n"
+        b"endobj\n"
+        b"%%EOF\n"
+    )
+    is_safe, mime, reason = MagicVerifier.inspect_file(evil_pdf)
+    assert is_safe is False
+    assert "launch" in reason.lower() or "javascript" in reason.lower()
+
+
+def test_legacy_office_ole_vba_macro_rejection(tmp_path):
+    """Verify that legacy Office documents (.doc, .xls) containing OLE VBA macros are quarantined."""
+    evil_doc = tmp_path / "PurchaseOrder.doc"
+    # OLE Compound Document signature + embedded VBA stream marker
+    ole_header = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + (b"\x00" * 512)
+    vba_payload = b"_VBA_PROJECT\x00Sub AutoOpen()\x00End Sub\x00"
+    evil_doc.write_bytes(ole_header + vba_payload)
+
+    is_safe, mime, reason = MagicVerifier.inspect_file(evil_doc)
+    assert is_safe is False
+    assert "vba macro" in reason.lower()
+
+
+def test_archive_null_byte_rejection(tmp_path):
+    """Verify that archives with null byte injection in member names are blocked."""
+    from unittest.mock import patch, MagicMock
+
+    zip_path = tmp_path / "test.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("test.txt", b"safe content")
+
+    mock_info = MagicMock()
+    mock_info.filename = "benign.txt\x00.exe"
+    mock_info.external_attr = 0
+    mock_info.file_size = 50
+
+    with patch("zipfile.ZipFile.infolist", return_value=[mock_info]):
+        guard = ArchiveGuard()
+        is_safe, reason = guard.inspect_archive(zip_path)
+        assert is_safe is False
+        assert "traversal" in reason.lower() or "detected" in reason.lower()
+
+
+def test_sender_folder_rfc5322_parsing():
+    """Verify that complex RFC 5322 sender headers are parsed cleanly into safe folder names."""
+    from email_ingestion.storage.layout_manager import StorageLayoutManager
+    layout = StorageLayoutManager()
+
+    folder = layout.sanitize_sender_folder("Sarah Connor <sarah.connor@acme-corp.com>")
+    assert folder == "sarah.connor_acme-corp.com"
+
+    folder2 = layout.sanitize_sender_folder("<orders@vendor.com>")
+    assert folder2 == "orders_vendor.com"
+
+    folder3 = layout.sanitize_sender_folder("billing@company.com")
+    assert folder3 == "billing_company.com"
+

@@ -99,7 +99,10 @@ class IMAPConnector(BaseEmailConnector):
                 # Modern email parsing with automatic RFC 2047/2231 decoding
                 msg = email.message_from_bytes(raw_email, policy=policy.default)
 
-                sender = str(msg.get("From", "unknown@unknown.com"))
+                from_hdr = str(msg.get("From", "unknown@unknown.com"))
+                parsed_real_name, parsed_sender_addr = email.utils.parseaddr(from_hdr)
+                sender = parsed_sender_addr if parsed_sender_addr else from_hdr
+                sender_display_name = parsed_real_name if parsed_real_name else sender
                 subject = str(msg.get("Subject", ""))
                 msg_id = (msg.get("Message-ID", f"imap_{mid}") or f"imap_{mid}").strip("<>")
                 self._msg_id_to_mid[msg_id] = mid
@@ -169,7 +172,7 @@ class IMAPConnector(BaseEmailConnector):
                         id=msg_id,
                         account_id=f"imap_{self.username}",
                         sender_email=sender,
-                        sender_name=sender.split("<")[0].strip() if "<" in sender else sender,
+                        sender_name=sender_display_name,
                         subject=subject,
                         received_at=received_at,
                         thread_id=thread_id,

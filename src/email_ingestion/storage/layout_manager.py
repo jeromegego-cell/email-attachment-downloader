@@ -4,6 +4,7 @@ Enforces the standardized corporate folder hierarchy:
 Auto_download_email/<sanitized_sender>/<timestamp>_<hash_prefix>/
 """
 
+import email.utils
 import hashlib
 import os
 import re
@@ -24,13 +25,20 @@ class StorageLayoutManager:
         
         Example: 'john.doe@company.com' -> 'john.doe_company.com'
         """
+        # Extract pure email address using standard RFC 5322 parser
+        _, parsed_addr = email.utils.parseaddr(sender_email)
+        clean_input = parsed_addr if parsed_addr else sender_email
+
         # Strip brackets if present (e.g., '<john@example.com>')
-        clean_email = sender_email.strip("<> \t\r\n").lower()
+        clean_email = clean_input.strip("<> \t\r\n").lower()
         # Replace '@' with '_'
         sanitized = clean_email.replace("@", "_")
         # Strip any characters that are not alphanumeric, underscore, period, or hyphen
         sanitized = re.sub(r"[^\w\.-]", "_", sanitized)
         sanitized = sanitized.strip(". ")
+        # Prevent path buffer overflow by capping at 128 characters
+        if len(sanitized) > 128:
+            sanitized = sanitized[:128].rstrip(". _-")
         return sanitized or "unknown_sender"
 
     def format_delivery_folder_name(
