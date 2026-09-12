@@ -26,8 +26,7 @@ def cli():
 @click.option("--dry-run", is_flag=True, help="Simulate ingestion without writing files or modifying database")
 @click.option("--continuous", "-w", is_flag=True, help="Run continuously in background polling mode")
 @click.option("--interval", "-i", type=int, default=60, help="Polling interval in seconds for continuous mode (default: 60)")
-@click.option("--idle", is_flag=True, help="Use RFC 2177 IMAP IDLE for real-time push notifications")
-def sync_command(config, verbose, debug, dry_run, continuous, interval, idle):
+def sync_command(config, verbose, debug, dry_run, continuous, interval):
     """Execute a synchronization run across all active email providers."""
     import logging
     import time
@@ -39,8 +38,7 @@ def sync_command(config, verbose, debug, dry_run, continuous, interval, idle):
     engine = EmailIngestionEngine(settings)
 
     if continuous:
-        mode_desc = "real-time IMAP IDLE + polling" if idle else f"interval: {interval}s"
-        click.secho(f"\n[INFO] Starting continuous watcher ({mode_desc}). Press Ctrl+C to stop.", fg="cyan", bold=True)
+        click.secho(f"\n[INFO] Starting continuous watcher (interval: {interval}s). Press Ctrl+C to stop.", fg="cyan", bold=True)
         cycle = 1
         try:
             while True:
@@ -57,20 +55,7 @@ def sync_command(config, verbose, debug, dry_run, continuous, interval, idle):
                 else:
                     click.echo("  -> No new messages found.")
                 cycle += 1
-
-                # Check if IMAP IDLE can be used for zero-delay notification
-                waited_via_idle = False
-                if idle:
-                    for conn in engine.connectors:
-                        from email_ingestion.connectors.imap_connector import IMAPConnector
-                        if isinstance(conn, IMAPConnector) and conn.supports_idle():
-                            click.echo(f"  [IDLE] Awaiting instant push notification from {conn.host} (max {interval}s)...")
-                            conn.idle_wait(timeout=interval)
-                            waited_via_idle = True
-                            break
-
-                if not waited_via_idle:
-                    time.sleep(interval)
+                time.sleep(interval)
         except KeyboardInterrupt:
             click.secho("\n[INFO] Continuous synchronization stopped cleanly by user.", fg="yellow", bold=True)
             return
@@ -93,12 +78,11 @@ def sync_command(config, verbose, debug, dry_run, continuous, interval, idle):
 @cli.command("watch")
 @click.option("--config", "-c", type=click.Path(exists=True), help="Path to custom config.yaml")
 @click.option("--interval", "-i", type=int, default=60, help="Polling interval in seconds (default: 60)")
-@click.option("--idle", is_flag=True, help="Use RFC 2177 IMAP IDLE for real-time push notifications")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose informational logging")
 @click.pass_context
-def watch_command(ctx, config, interval, idle, verbose):
+def watch_command(ctx, config, interval, verbose):
     """Run continuous background synchronization (alias for 'sync --continuous')."""
-    ctx.invoke(sync_command, config=config, verbose=verbose, debug=False, dry_run=False, continuous=True, interval=interval, idle=idle)
+    ctx.invoke(sync_command, config=config, verbose=verbose, debug=False, dry_run=False, continuous=True, interval=interval)
 
 
 @cli.command("configure")
@@ -337,194 +321,6 @@ def test_connection_command(config):
                 click.secho(f"  [FAIL] Could not establish connection to {connector.provider_name}", fg="red", bold=True)
         except Exception as err:
             click.secho(f"  [FAIL] Error connecting to {connector.provider_name}: {err}", fg="red")
-
-
-@cli.command("search")
-@click.argument("query", default="")
-@click.option("--sender", "-s", default=None, help="Filter by sender email address")
-@click.option("--status", type=click.Choice(["CLEAN", "QUARANTINED"], case_sensitive=False), default=None, help="Filter by file status")
-@click.option("--revisions-only", "-r", is_flag=True, help="Show only document revisions (v2+)")
-@click.option("--limit", "-n", default=25, help="Maximum number of results to display (default: 25)")
-@click.option("--config", "-c", type=click.Path(exists=True), help="Path to custom config.yaml")
-def search_command(query, sender, status, revisions_only, limit, config):
-    """Search ingested attachments and email contexts by filename, sender, subject, or hash."""
-    cfg_path = Path(config) if config else None
-    settings = get_settings(cfg_path)
-    db = DatabaseManager(settings.database.db_url)
-
-    results = db.search_records(
-        query=query,
-        sender=sender,
-        status=status,
-        revisions_only=revisions_only,
-        limit=limit
-    )
-
-    click.secho(f"\n=== Search Results ({len(results)} found) ===", fg="cyan", bold=True)
-    if not results:
-        click.echo("  No matching records found.")
-        return
-
-    for idx, r in enumerate(results, 1):
-        color = "green" if r["status"] == "CLEAN" else "red"
-        ver_str = f" [v{r['version_number']}]" if r["version_number"] > 1 else ""
-        click.secho(f"{idx}. {r['filename']}{ver_str}", fg=color, bold=True)
-        click.echo(f"   Sender:   {r['sender']} ({r['sender_name'] or 'N/A'})")
-        click.echo(f"   Subject:  {r['subject'] or '(No Subject)'}")
-        click.echo(f"   Received: {r['received_at']}")
-        size_kb = r['size_bytes'] / 1024.0
-        click.echo(f"   Size:     {size_kb:.1f} KB | Status: {r['status']}")
-        click.echo(f"   Path:     {r['local_storage_path']}")
-        if r["quarantine_reason"]:
-            click.secho(f"   Threat:   {r['quarantine_reason']}", fg="yellow")
-        click.echo("")
-
-
-@cli.command("stats")
-@click.option("--config", "-c", type=click.Path(exists=True), help="Path to custom config.yaml")
-def stats_command(config):
-    """Display comprehensive gateway analytics, storage consumption, and sender statistics."""
-    cfg_path = Path(config) if config else None
-    settings = get_settings(cfg_path)
-    db = DatabaseManager(settings.database.db_url)
-
-    stats = db.get_storage_statistics()
-
-    total_bytes = stats["total_bytes"]
-    if total_bytes >= 1048576:
-        size_str = f"{total_bytes / 1048576:.2f} MB"
-    elif total_bytes >= 1024:
-        size_str = f"{total_bytes / 1024:.1f} KB"
-    else:
-        size_str = f"{total_bytes} B"
-
-    total_att = stats["total_attachments"]
-    clean_pct = (stats["clean_count"] / total_att * 100) if total_att > 0 else 100.0
-
-    click.secho("\n==================================================", fg="cyan", bold=True)
-    click.secho("    ENTERPRISE GATEWAY OPERATIONAL ANALYTICS     ", fg="cyan", bold=True)
-    click.secho("==================================================", fg="cyan", bold=True)
-    click.echo(f"  Total Ingested Emails:     {stats['total_messages']:,}")
-    click.echo(f"  Total Tracked Attachments: {stats['total_attachments']:,}")
-    click.secho(f"  Clean Approved Files:      {stats['clean_count']:,} ({clean_pct:.1f}%)", fg="green")
-    click.secho(f"  Quarantined Threats:       {stats['quarantine_count']:,}", fg="red" if stats['quarantine_count'] > 0 else "white")
-    click.echo(f"  Document Revisions (v2+):  {stats['revision_count']:,}")
-    click.echo(f"  Total Storage Footprint:   {size_str}")
-
-    if stats["top_senders"]:
-        click.secho("\n--- Top Senders by Attachment Volume ---", fg="yellow", bold=True)
-        for s in stats["top_senders"]:
-            s_bytes = s["size_bytes"]
-            s_size = f"{s_bytes / 1024:.1f} KB" if s_bytes < 1048576 else f"{s_bytes / 1048576:.2f} MB"
-            click.echo(f"  • {s['sender']}: {s['file_count']} files ({s_size})")
-
-    if stats["top_mimes"]:
-        click.secho("\n--- File / MIME Type Distribution ---", fg="magenta", bold=True)
-        for m in stats["top_mimes"]:
-            click.echo(f"  • {m['mime_type']}: {m['count']} files")
-    click.echo("")
-
-
-@cli.command("serve")
-@click.option("--port", "-p", default=8080, help="Port to listen on (default: 8080)")
-@click.option("--bind", "-b", default="127.0.0.1", help="Network address to bind (default: 127.0.0.1)")
-@click.option("--no-browse", is_flag=True, help="Do not automatically open web browser")
-@click.option("--config", "-c", type=click.Path(exists=True), help="Path to custom config.yaml")
-def serve_command(port, bind, no_browse, config):
-    """Launch local web server to browse the interactive attachment catalog in a browser."""
-    import http.server
-    import socketserver
-    import webbrowser
-    import os
-
-    cfg_path = Path(config) if config else None
-    settings = get_settings(cfg_path)
-    root_dir = settings.storage.download_dir.resolve()
-
-    if not root_dir.exists():
-        root_dir.mkdir(parents=True, exist_ok=True)
-
-    prev_cwd = os.getcwd()
-    os.chdir(str(root_dir))
-    handler = http.server.SimpleHTTPRequestHandler
-
-    click.secho("\n=== Serving Interactive Attachment Catalog ===", fg="cyan", bold=True)
-    click.echo(f"  Root Directory: {root_dir}")
-    click.secho(f"  URL:            http://{bind}:{port}/index.html", fg="green", bold=True)
-    click.echo("  Press Ctrl+C to stop the server.\n")
-
-    if not no_browse:
-        try:
-            webbrowser.open(f"http://{bind}:{port}/index.html")
-        except Exception:
-            pass
-
-    try:
-        with socketserver.TCPServer((bind, port), handler) as httpd:
-            httpd.serve_forever()
-    except KeyboardInterrupt:
-        click.secho("\nServer stopped cleanly.", fg="yellow")
-    finally:
-        os.chdir(prev_cwd)
-
-
-@cli.command("export")
-@click.option("--format", "-f", "export_format", type=click.Choice(["csv", "json", "zip"], case_sensitive=False), default="csv", help="Export format (csv, json, zip)")
-@click.option("--output", "-o", type=click.Path(), required=False, help="Destination file path for export")
-@click.option("--sender", "-s", default=None, help="Filter by sender email address")
-@click.option("--config", "-c", type=click.Path(exists=True), help="Path to custom config.yaml")
-def export_command(export_format, output, sender, config):
-    """Export download catalog ledger to CSV/JSON or package clean files into a ZIP archive."""
-    import csv
-    import json
-    import zipfile
-
-    cfg_path = Path(config) if config else None
-    settings = get_settings(cfg_path)
-    db = DatabaseManager(settings.database.db_url)
-
-    records = db.search_records(sender=sender, limit=10000)
-    if not records:
-        click.secho("[INFO] No records found to export.", fg="yellow")
-        return
-
-    default_name = f"attachment_export_{export_format.lower()}"
-    if export_format == "csv":
-        out_path = Path(output) if output else Path(f"{default_name}.csv")
-        with open(out_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["Received At", "Sender Email", "Sender Name", "Subject", "Filename", "Size (Bytes)", "Status", "Version", "SHA-256", "Storage Path"])
-            for r in records:
-                writer.writerow([
-                    r["received_at"], r["sender"], r["sender_name"] or "", r["subject"] or "",
-                    r["filename"], r["size_bytes"], r["status"], r["version_number"], r["sha256"], r["local_storage_path"]
-                ])
-        click.secho(f"[OK] Exported {len(records)} records to CSV: {out_path.resolve()}", fg="green", bold=True)
-
-    elif export_format == "json":
-        out_path = Path(output) if output else Path(f"{default_name}.json")
-        serialized = []
-        for r in records:
-            item = dict(r)
-            if item.get("received_at"):
-                item["received_at"] = str(item["received_at"])
-            serialized.append(item)
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(serialized, f, indent=2)
-        click.secho(f"[OK] Exported {len(records)} records to JSON: {out_path.resolve()}", fg="green", bold=True)
-
-    elif export_format == "zip":
-        out_path = Path(output) if output else Path(f"{default_name}.zip")
-        packaged_count = 0
-        with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for r in records:
-                if r["status"] == "CLEAN":
-                    file_path = Path(r["local_storage_path"])
-                    if file_path.exists():
-                        arc_name = f"{r['sender']}/{r['filename']}"
-                        zf.write(file_path, arc_name)
-                        packaged_count += 1
-        click.secho(f"[OK] Packaged {packaged_count} clean attachments into ZIP archive: {out_path.resolve()}", fg="green", bold=True)
 
 
 if __name__ == "__main__":

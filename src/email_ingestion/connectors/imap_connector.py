@@ -199,51 +199,6 @@ class IMAPConnector(BaseEmailConnector):
         except Exception as e:
             logger.debug(f"Could not flag message {message_id} as \\Seen: {e}")
 
-    def supports_idle(self) -> bool:
-        """Check if the connected IMAP server advertises RFC 2177 IDLE capability."""
-        if not self._client:
-            return False
-        try:
-            status, caps = self._client.capability()
-            if status == "OK" and caps:
-                cap_str = " ".join(c.decode() if isinstance(c, bytes) else str(c) for c in caps).upper()
-                return "IDLE" in cap_str
-        except Exception:
-            pass
-        return False
-
-    def idle_wait(self, timeout: int = 60) -> bool:
-        """Wait for real-time mail notifications using RFC 2177 IMAP IDLE.
-        
-        Returns:
-            True if socket event or notification received, False on timeout or fallback.
-        """
-        if not self._client or not self.supports_idle():
-            import time
-            time.sleep(min(timeout, 2))
-            return False
-
-        try:
-            import select
-            tag = self._client._new_tag().decode() if hasattr(self._client, "_new_tag") else "A001"
-            self._client.send(f"{tag} IDLE\r\n".encode("utf-8"))
-            line = self._client.readline()
-            if b"+" in line:
-                sock = getattr(self._client, "sock", None)
-                activity = False
-                if sock:
-                    r, _, _ = select.select([sock], [], [], timeout)
-                    activity = bool(r)
-                else:
-                    import time
-                    time.sleep(min(timeout, 2))
-                self._client.send(b"DONE\r\n")
-                self._client.readline()
-                return activity
-        except Exception as e:
-            logger.debug(f"IMAP IDLE wait error: {e}")
-        return False
-
     def disconnect(self) -> None:
         """Safely close and log out of the IMAP connection."""
         if self._client:

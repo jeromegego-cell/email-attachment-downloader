@@ -176,9 +176,6 @@ email-ingestion sync
 # Autonomous continuous watcher mode (polls every 60 seconds)
 email-ingestion watch --interval 60
 
-# Real-time IMAP IDLE push mode (sub-second zero-delay push)
-email-ingestion watch --interval 60 --idle
-
 # Simulation mode (dry run without writing to disk or database)
 email-ingestion sync --dry-run
 
@@ -189,83 +186,15 @@ email-ingestion sync --verbose
 email-ingestion sync --debug
 ```
 
-### 7. Instant Full-Text Search
-Search across all downloaded attachments, senders, subjects, and hashes:
-```bash
-# Search by keyword
-email-ingestion search "contract"
-
-# Filter by sender
-email-ingestion search --sender "acme-corp.com"
-
-# Filter by security status
-email-ingestion search --status QUARANTINED
-
-# Show only document revisions (v2+)
-email-ingestion search --revisions-only
-```
-
-### 8. Operational Analytics & Storage Statistics
-Display gateway metrics, storage consumption, top senders, and file type distribution:
-```bash
-email-ingestion stats
-```
-
-### 9. Interactive Web Dashboard & Catalog Viewer
-In addition to `Auto_download_email/INDEX.md`, the engine automatically maintains a sleek, responsive HTML5 web application at `Auto_download_email/index.html` with real-time live search, filter tabs (Clean, Threats, Revisions), and sender chips.
-
-Launch the local web server to browse the interactive catalog directly in your browser:
-```bash
-email-ingestion serve --port 8080
-```
-
-### 10. Catalog Export & Legal Archiving
-Export the audit ledger or package verified attachments into an archive:
-```bash
-# Export to CSV spreadsheet
-email-ingestion export --format csv --output attachments_audit.csv
-
-# Export to structured JSON
-email-ingestion export --format json --output audit_manifest.json
-
-# Bundle clean attachments into a ZIP archive
-email-ingestion export --format zip --output clean_archive.zip --sender "acme-corp.com"
-```
-
-### 11. State & Audit Ledger Inspection
+### 7. Inspecting State & Audit Ledger
 ```bash
 email-ingestion status
 email-ingestion audit --limit 20
+```
+
+### 8. Rebuilding the Master Index
+```bash
 email-ingestion reindex
 ```
-
----
-
-## Production Deployment (Docker & Systemd)
-
-### 1. Docker Compose (Zero-Configuration Deployment)
-Run 24/7 background email ingestion with persistent storage and optional web dashboard:
-```bash
-# Start background worker and web catalog
-docker compose up -d
-
-# View real-time logs
-docker compose logs -f email-ingestion
-```
-
-### 2. Systemd Service (Linux Server Daemon)
-A production systemd unit template is provided in `systemd/email-ingestion.service`:
-```bash
-# Copy service unit
-sudo cp systemd/email-ingestion.service /etc/systemd/system/
-
-# Reload systemd and enable service
-sudo systemctl daemon-reload
-sudo systemctl enable --now email-ingestion
-
-# Check service status
-sudo systemctl status email-ingestion
-```
-
 
 
