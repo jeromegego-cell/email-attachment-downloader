@@ -8,7 +8,7 @@ import hashlib
 import os
 import re
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Tuple
 
@@ -83,14 +83,62 @@ class StorageLayoutManager:
 
         sorted_entries = sorted(entries, key=lambda x: str(x.get("received_at", "")), reverse=True)
 
+        total_count = len(sorted_entries)
+        clean_count = sum(1 for e in sorted_entries if e.get("status") == "CLEAN")
+        quarantine_count = sum(1 for e in sorted_entries if e.get("status") == "QUARANTINED")
+        revision_count = sum(1 for e in sorted_entries if e.get("version_number", 1) > 1)
+        total_bytes = sum(e.get("size_bytes", 0) for e in sorted_entries)
+        if total_bytes >= 1048576:
+            total_size_str = f"{total_bytes / 1048576:.2f} MB"
+        elif total_bytes >= 1024:
+            total_size_str = f"{total_bytes / 1024:.1f} KB"
+        else:
+            total_size_str = f"{total_bytes} B"
+
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
         lines = [
             "# Master Attachment Index",
             "",
             "All downloaded email attachments organized in chronological order.",
             "",
-            "| Received Date (UTC) | Sender | Filename | Size | Status | Direct Access |",
-            "| :--- | :--- | :--- | :--- | :--- | :--- |"
+            "## 📊 Gateway Executive Summary",
+            "| Total Files Tracked | Clean Downloads | Quarantined Threats | Document Revisions | Storage Consumed | Last Refreshed (UTC) |",
+            "| :---: | :---: | :---: | :---: | :---: | :---: |",
+            f"| **{total_count}** | {clean_count} | {quarantine_count} | {revision_count} | {total_size_str} | `{now_utc}` |",
+            "",
         ]
+
+        # Sender Quick-Jump Table
+        sender_groups = {}
+        for e in sorted_entries:
+            s = str(e.get("sender", "unknown")).strip()
+            status = e.get("status", "CLEAN")
+            if s not in sender_groups:
+                sender_groups[s] = {"count": 0, "quarantined": 0}
+            sender_groups[s]["count"] += 1
+            if status == "QUARANTINED":
+                sender_groups[s]["quarantined"] += 1
+
+        if sender_groups:
+            lines.append("## 📁 Sender Directory Quick-Jump")
+            lines.append("| Sender | Ingested Files | Health Status | Direct Folder Link |")
+            lines.append("| :--- | :---: | :---: | :--- |")
+            for s, stats in sender_groups.items():
+                sender_dir = self.sanitize_sender_folder(s)
+                if stats["quarantined"] > 0:
+                    health = f"⚠️ {stats['quarantined']} Quarantined"
+                    link = f"[Inspect Vault](./quarantine/) · [Sender Folder](./{urllib.parse.quote(sender_dir)}/)"
+                else:
+                    health = "✅ CLEAN"
+                    link = f"[Open Folder](./{urllib.parse.quote(sender_dir)}/)"
+                escaped_s = s.replace("|", "\\|")
+                lines.append(f"| `{escaped_s}` | {stats['count']} | {health} | {link} |")
+            lines.append("")
+
+        lines.append("## 📜 Chronological Download Ledger")
+        lines.append("| Received Date (UTC) | Sender | Filename | Size | Status | Direct Access |")
+        lines.append("| :--- | :--- | :--- | :--- | :--- | :--- |")
 
         for e in sorted_entries:
             rec_date = str(e.get("received_at", "N/A"))
@@ -115,8 +163,19 @@ class StorageLayoutManager:
 
             quoted_rel_path = urllib.parse.quote(rel_path.as_posix())
             quoted_env_dir = urllib.parse.quote(envelope_dir.as_posix())
-            sidecar_link = f" · [Context](./{quoted_env_dir}/email_context.md)" if sidecar_file.exists() else ""
-            lines.append(f"| {rec_date} | `{sender}` | **{fname}** | {size_str} | {status} | [Download](./{quoted_rel_path}){sidecar_link} |")
+
+            if status == "QUARANTINED":
+                report_name = f"{Path(rel_path).stem}.report.md"
+                report_file = self.root_dir / "quarantine" / report_name
+                if report_file.exists():
+                    access_links = f"[Report](./quarantine/{urllib.parse.quote(report_name)}) · [Download](./{quoted_rel_path})"
+                else:
+                    access_links = f"[Download](./{quoted_rel_path})"
+            else:
+                sidecar_link = f" · [Context](./{quoted_env_dir}/email_context.md)" if sidecar_file.exists() else ""
+                access_links = f"[Download](./{quoted_rel_path}){sidecar_link}"
+
+            lines.append(f"| {rec_date} | `{sender}` | **{fname}** | {size_str} | {status} | {access_links} |")
 
         lines.append("")
         content = "\n".join(lines)

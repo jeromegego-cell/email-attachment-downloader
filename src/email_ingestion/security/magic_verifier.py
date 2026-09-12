@@ -32,7 +32,9 @@ class MagicVerifier:
     DANGEROUS_EXTENSIONS: Set[str] = {
         ".exe", ".dll", ".bat", ".cmd", ".com", ".scr", ".sh", ".bin",
         ".vbs", ".ps1", ".hta", ".cpl", ".msi", ".jar", ".iso", ".vhd",
-        ".wsf", ".gadget", ".reg", ".pif", ".lnk", ".appx", ".deb", ".rpm"
+        ".wsf", ".gadget", ".reg", ".pif", ".lnk", ".appx", ".deb", ".rpm",
+        ".js", ".jse", ".vbe", ".wsh", ".msc", ".inf", ".scf",
+        ".docm", ".xlsm", ".pptm", ".dotm", ".xltm"
     }
 
     # Standard safe extension mapping
@@ -60,9 +62,9 @@ class MagicVerifier:
 
         file_ext = file_path.suffix.lower()
 
-        # Rule 1: Outright rejection of dangerous extensions (e.g. .exe, .scr, .bat, .lnk)
+        # Rule 1: Outright rejection of dangerous extensions (e.g. .exe, .scr, .bat, .lnk, .docm)
         if file_ext in cls.DANGEROUS_EXTENSIONS:
-            return False, "application/x-executable", f"File declares dangerous executable extension: {file_ext}"
+            return False, "application/x-executable", f"File declares dangerous executable or macro extension: {file_ext}"
 
         file_size = file_path.stat().st_size
 
@@ -101,6 +103,12 @@ class MagicVerifier:
                 ]
                 if any(tag in header_lower for tag in dangerous_tags):
                     return False, "text/html", f"Active script execution payload detected in {file_ext}"
+
+            # Check for PDF active code execution (/JavaScript, /Launch)
+            if file_ext == ".pdf" and b"%PDF-" in header:
+                header_lower = header.lower()
+                if any(x in header_lower for x in [b"/javascript", b"/js ", b"/launch"]):
+                    return False, "application/pdf", "Dangerous active script or /Launch action embedded in PDF"
 
         except Exception as err:
             return False, "unknown", f"Failed reading file header: {str(err)}"

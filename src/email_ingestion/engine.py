@@ -304,6 +304,33 @@ class EmailIngestionEngine:
                         created_disk_files.remove(target_path)
                     created_disk_files.append(quarantine_path)
 
+                    # Generate companion threat report in quarantine directory
+                    report_filename = f"{sha256[:12]}_{target_path.stem}.report.md"
+                    report_path = quarantine_dir / report_filename
+                    report_md = (
+                        f"# Threat Quarantine Report\n\n"
+                        f"> [!CAUTION]\n"
+                        f"> **Quarantined Suspicious / Malicious File**\n"
+                        f"> This attachment was blocked by security policy and isolated in the quarantine vault.\n\n"
+                        f"## Quarantine Metadata\n"
+                        f"- **Threat Assessment:** `{quarantine_reason or 'Security check failed'}`\n"
+                        f"- **Original Filename:** `{item['stub'].filename}`\n"
+                        f"- **Detected MIME Type:** `{detected_mime}`\n"
+                        f"- **Sender:** `{envelope.sender_email}`\n"
+                        f"- **Subject:** {envelope.subject or '(No Subject)'}\n"
+                        f"- **Received (UTC):** {envelope.received_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+                        f"- **SHA-256 Hash:** `{sha256}`\n"
+                        f"- **File Size:** {actual_size:,} bytes\n"
+                        f"- **Vault Binary Path:** `{quarantine_filename}`\n"
+                    )
+                    report_path.write_text(report_md, encoding="utf-8")
+                    try:
+                        import os
+                        os.chmod(report_path, 0o600)
+                    except OSError:
+                        pass
+                    created_disk_files.append(report_path)
+
                     quarantined_count += 1
                     anomaly_warnings.append(f"Quarantined '{safe_filename}': {quarantine_reason}")
                     self.plugin_mgr.notify_quarantine(envelope, safe_filename, quarantine_reason or "Security check failed")
@@ -321,6 +348,13 @@ class EmailIngestionEngine:
                         quarantine_reason=quarantine_reason
                     )
                     downloaded_attachment_records.append(att_record)
+                    attachments_meta_for_sidecar.append({
+                        "filename": safe_filename,
+                        "size_bytes": actual_size,
+                        "sha256": sha256,
+                        "status": "QUARANTINED",
+                        "quarantine_reason": quarantine_reason
+                    })
                     continue
 
                 # Step 4: Document Similarity & Thread-Scoped Revision Versioning (v1 vs v2)
@@ -349,6 +383,12 @@ class EmailIngestionEngine:
                             diff_path = envelope_dir / f"{target_path.stem}_diff_v{prior_attachment.version_number}_to_v{version_num}.diff"
                             with open(diff_path, "w", encoding="utf-8") as df:
                                 df.write(diff_content)
+                            try:
+                                import os
+                                os.chmod(diff_path, 0o600)
+                            except OSError:
+                                pass
+                            created_disk_files.append(diff_path)
 
                         revision_info_sidecar = {
                             "is_revision": True,

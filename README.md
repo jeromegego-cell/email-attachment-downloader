@@ -105,13 +105,16 @@ email_attachment_downloader/
 │           ├── ai_summarizer.py       # AI context summarizer
 │           └── desktop_notifier.py    # Desktop notification plugin
 │
-├── tests/                             # Automated test suite (31 test cases, 100% passing)
-│   ├── test_open_source_libraries.py  # Tenacity, Pathvalidate, RapidFuzz, ReplyParser
+├── tests/                             # Automated test suite (33 test cases, 100% passing)
+│   ├── test_open_source_libraries.py  # Tenacity, Pathvalidate, RapidFuzz, ReplyParser, Executive Summary
 │   ├── test_security_filters.py
 │   ├── test_security_edge_cases.py
 │   ├── test_imap_rfc822_ingestion.py
 │   ├── test_duplicate_and_similarity.py
 │   └── test_plugins_and_engine.py
+│
+├── .github/workflows/                 # CI/CD Workflows
+│   └── ci.yml                         # Automated GitHub Actions test & validation matrix
 │
 └── docs/                              # Production Documentation Suite
     ├── architecture_guide.md
@@ -147,22 +150,31 @@ email-ingestion validate
 ```bash
 pytest -v
 ```
-All 31 test cases pass in ~0.30s.
+All 33 test cases pass in ~0.35s across Linux, macOS, and Windows.
 
-### 3. Test Provider Authentication (Without Downloading)
+### 3. Interactive Configuration Wizard
+Quickly configure your Gmail, Outlook, or corporate IMAP credentials with automatic TLS verification:
+```bash
+email-ingestion configure
+```
+
+### 4. Test Provider Authentication (Without Downloading)
 ```bash
 email-ingestion test-connection
 ```
 
-### 4. Run the Live Offline Demonstration
+### 5. Run the Live Offline Demonstration
 ```bash
 email-ingestion demo
 ```
 
-### 5. Synchronizing Live Mailboxes
+### 6. Synchronizing Live Mailboxes
 ```bash
-# Standard synchronization
+# Standard one-time synchronization
 email-ingestion sync
+
+# Autonomous continuous watcher mode (polls every 60 seconds)
+email-ingestion watch --interval 60
 
 # Simulation mode (dry run without writing to disk or database)
 email-ingestion sync --dry-run
@@ -174,13 +186,13 @@ email-ingestion sync --verbose
 email-ingestion sync --debug
 ```
 
-### 6. Inspecting State & Audit Ledger
+### 7. Inspecting State & Audit Ledger
 ```bash
 email-ingestion status
 email-ingestion audit --limit 20
 ```
 
-### 7. Rebuilding the Master Index
+### 8. Rebuilding the Master Index
 ```bash
 email-ingestion reindex
 ```

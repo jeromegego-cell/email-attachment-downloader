@@ -24,15 +24,41 @@ def cli():
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose informational logging")
 @click.option("--debug", is_flag=True, help="Enable detailed debug trace logging")
 @click.option("--dry-run", is_flag=True, help="Simulate ingestion without writing files or modifying database")
-def sync_command(config, verbose, debug, dry_run):
+@click.option("--continuous", "-w", is_flag=True, help="Run continuously in background polling mode")
+@click.option("--interval", "-i", type=int, default=60, help="Polling interval in seconds for continuous mode (default: 60)")
+def sync_command(config, verbose, debug, dry_run, continuous, interval):
     """Execute a synchronization run across all active email providers."""
     import logging
+    import time
     log_level = logging.DEBUG if debug else (logging.INFO if verbose else logging.WARNING)
     logging.basicConfig(level=log_level, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
     cfg_path = Path(config) if config else None
     settings = get_settings(cfg_path)
     engine = EmailIngestionEngine(settings)
+
+    if continuous:
+        click.secho(f"\n[INFO] Starting continuous watcher (interval: {interval}s). Press Ctrl+C to stop.", fg="cyan", bold=True)
+        cycle = 1
+        try:
+            while True:
+                now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+                click.echo(f"[{now_str}] Cycle #{cycle}: Scanning mailboxes...")
+                metrics = engine.run_sync(dry_run=dry_run)
+                if metrics["messages_processed"] > 0:
+                    click.secho(
+                        f"  -> Processed {metrics['messages_processed']} email(s), "
+                        f"downloaded {metrics['attachments_downloaded']} attachment(s), "
+                        f"quarantined {metrics['quarantined']} threat(s).",
+                        fg="green", bold=True
+                    )
+                else:
+                    click.echo("  -> No new messages found.")
+                cycle += 1
+                time.sleep(interval)
+        except KeyboardInterrupt:
+            click.secho("\n[INFO] Continuous synchronization stopped cleanly by user.", fg="yellow", bold=True)
+            return
 
     if dry_run:
         click.secho("[DRY-RUN] Starting simulated email synchronization...", fg="yellow", bold=True)
@@ -47,6 +73,88 @@ def sync_command(config, verbose, debug, dry_run):
     click.echo(f"  Files Quarantined:      {metrics['quarantined']}")
     if dry_run:
         click.secho("  Mode: DRY RUN (No changes written to disk or ledger)", fg="yellow")
+
+
+@cli.command("watch")
+@click.option("--config", "-c", type=click.Path(exists=True), help="Path to custom config.yaml")
+@click.option("--interval", "-i", type=int, default=60, help="Polling interval in seconds (default: 60)")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose informational logging")
+@click.pass_context
+def watch_command(ctx, config, interval, verbose):
+    """Run continuous background synchronization (alias for 'sync --continuous')."""
+    ctx.invoke(sync_command, config=config, verbose=verbose, debug=False, dry_run=False, continuous=True, interval=interval)
+
+
+@cli.command("configure")
+@click.option("--config", "-c", default="config.yaml", help="Path to configuration file to create/update")
+def configure_command(config):
+    """Interactive setup wizard to configure mailboxes (Gmail, IMAP, Outlook)."""
+    import yaml
+    click.secho("\n=== Enterprise Email Ingestion - Configuration Wizard ===", fg="cyan", bold=True)
+    click.echo("Easily configure your email credentials and preferences.\n")
+
+    click.echo("Select your email connection provider:")
+    click.echo("  1) Standard IMAP / SSL (Gmail App Password, Outlook, Corporate Mail)")
+    click.echo("  2) Offline Mock Scenarios (Local testing & demo)")
+    choice = click.prompt("Enter choice", type=click.Choice(["1", "2"]), default="1")
+
+    cfg_file = Path(config)
+    existing_cfg = {}
+    if cfg_file.exists():
+        try:
+            with open(cfg_file, "r", encoding="utf-8") as f:
+                existing_cfg = yaml.safe_load(f) or {}
+        except Exception:
+            existing_cfg = {}
+
+    if choice == "1":
+        host = click.prompt("IMAP Server Host", default="imap.gmail.com")
+        port = click.prompt("IMAP Port", default=993, type=int)
+        username = click.prompt("Email Address / Username")
+        password = click.prompt("Password or App Password (hidden)", hide_input=True)
+
+        click.echo("\nVerifying connection credentials over TLS...")
+        from email_ingestion.connectors.imap_connector import IMAPConnector
+        test_conn = IMAPConnector(host=host, port=port, username=username, password=password)
+        connected = test_conn.connect()
+        if connected:
+            click.secho("  [PASS] Successfully connected and authenticated!", fg="green", bold=True)
+            test_conn.disconnect()
+        else:
+            click.secho("  [WARN] Could not connect with provided credentials.", fg="yellow", bold=True)
+            if "gmail.com" in host.lower():
+                click.echo("  Tip for Gmail: Ensure you are using a 16-character 'App Password'")
+                click.echo("  (Google Account -> Security -> 2-Step Verification -> App Passwords).")
+            if not click.confirm("Save configuration anyway?", default=True):
+                click.echo("Aborted.")
+                return
+
+        existing_cfg.setdefault("imap", {})
+        existing_cfg["imap"]["enabled"] = True
+        existing_cfg["imap"]["host"] = host
+        existing_cfg["imap"]["port"] = port
+        existing_cfg["imap"]["username"] = username
+        existing_cfg["imap"]["password"] = password
+        existing_cfg["imap"]["mailbox"] = "INBOX"
+        existing_cfg["imap"]["use_ssl"] = True
+
+        existing_cfg.setdefault("mock_provider", {})
+        existing_cfg["mock_provider"]["enabled"] = False
+    else:
+        existing_cfg.setdefault("mock_provider", {})
+        existing_cfg["mock_provider"]["enabled"] = True
+        if "imap" in existing_cfg:
+            existing_cfg["imap"]["enabled"] = False
+        click.secho("  Configured for offline Mock Demonstration mode.", fg="green")
+
+    with open(cfg_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump(existing_cfg, f, sort_keys=False)
+
+    click.secho(f"\n[OK] Configuration successfully saved to '{config}'!", fg="green", bold=True)
+    click.echo("Next steps:")
+    click.echo("  email-ingestion test-connection  # Test server connectivity")
+    click.echo("  email-ingestion sync             # Ingest unread emails once")
+    click.echo("  email-ingestion watch            # Run autonomous background watcher")
 
 
 @cli.command("status")

@@ -75,6 +75,11 @@ class AtomicFileWriter:
             with open(temp_path, "wb") as f:
                 f.write(data)
                 hasher.update(data)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except OSError:
+                    pass
             
             sha256_hash = hasher.hexdigest()
             file_size = len(data)
@@ -116,6 +121,12 @@ class AtomicFileWriter:
                         raise ValueError(f"Stream size exceeded maximum allowed limit of {ceiling} bytes")
                     out_f.write(chunk)
                     hasher.update(chunk)
+
+                out_f.flush()
+                try:
+                    os.fsync(out_f.fileno())
+                except OSError:
+                    pass
 
             sha256_hash = hasher.hexdigest()
 

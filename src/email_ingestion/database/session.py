@@ -140,7 +140,8 @@ class DatabaseManager:
                     "filename": att.sanitized_filename or att.original_filename,
                     "size_bytes": att.file_size_bytes,
                     "status": att.quarantine_status,
-                    "local_storage_path": att.local_storage_path
+                    "local_storage_path": att.local_storage_path,
+                    "version_number": att.version_number or 1
                 })
             return entries
 

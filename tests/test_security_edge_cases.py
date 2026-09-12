@@ -163,3 +163,27 @@ def test_atomic_writer_staging_cleanup(tmp_path):
     purged = writer.cleanup_stale_staging(max_age_seconds=3600)
     assert purged == 1
     assert not part_file.exists()
+
+
+def test_macro_enabled_office_docm_rejection(tmp_path):
+    """Verify that macro-enabled formats (.docm, .xlsm) are blocked."""
+    docm = tmp_path / "Invoice.docm"
+    docm.write_bytes(b"PK\x03\x04dummy_zip_content")
+    is_safe, mime, reason = MagicVerifier.inspect_file(docm)
+    assert is_safe is False
+    assert "dangerous executable or macro extension" in reason.lower()
+
+
+def test_pdf_embedded_javascript_rejection(tmp_path):
+    """Verify that PDFs containing embedded active JavaScript or /Launch actions are quarantined."""
+    evil_pdf = tmp_path / "invoice_with_script.pdf"
+    evil_pdf.write_bytes(
+        b"%PDF-1.5\n"
+        b"1 0 obj\n"
+        b"<< /Type /Catalog /Pages 2 0 R /OpenAction << /S /JavaScript /JS (app.alert('pwned');) >> >>\n"
+        b"endobj\n"
+        b"%%EOF\n"
+    )
+    is_safe, mime, reason = MagicVerifier.inspect_file(evil_pdf)
+    assert is_safe is False
+    assert "javascript" in reason.lower() or "launch" in reason.lower()

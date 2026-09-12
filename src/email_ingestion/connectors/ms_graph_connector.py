@@ -26,6 +26,7 @@ class MSGraphConnector(BaseEmailConnector):
         self.tenant_id = tenant_id
         self.user_email = user_email
         self._client = None
+        self._credential = None
         self._delta_link = None
 
     @property

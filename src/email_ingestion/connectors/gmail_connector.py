@@ -180,5 +180,14 @@ class GmailConnector(BaseEmailConnector):
         return io.BytesIO(raw_data)
 
     def acknowledge_processed(self, message_id: str) -> None:
-        """Apply an optional read or archive label to mark processing."""
-        pass
+        """Mark processed message as read by removing the UNREAD label in Gmail."""
+        if not self._service:
+            return
+        try:
+            self._service.users().messages().modify(
+                userId=self.user_email,
+                id=message_id,
+                body={"removeLabelIds": ["UNREAD"]}
+            ).execute()
+        except Exception:
+            pass

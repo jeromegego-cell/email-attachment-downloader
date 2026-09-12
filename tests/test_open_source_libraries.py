@@ -112,3 +112,60 @@ def test_imap_make_header_decoding():
     # Quoted-Printable encoded ISO-8859-1
     qp_header = "=?iso-8859-1?Q?Caf=E9_Menu?="
     assert IMAPConnector._decode_mime_header(qp_header) == "Café Menu"
+
+
+def test_master_index_executive_summary_and_sender_jump(tmp_path):
+    """Verify layout manager generates executive summary card, sender jump table, and report links."""
+    from email_ingestion.storage.layout_manager import StorageLayoutManager
+
+    layout = StorageLayoutManager(root_dir=tmp_path)
+    entries = [
+        {
+            "received_at": "2026-09-12 10:00:00",
+            "sender": "finance@vendor.com",
+            "filename": "Invoice_101.pdf",
+            "size_bytes": 2048,
+            "status": "CLEAN",
+            "local_storage_path": str(tmp_path / "finance_vendor.com" / "env1" / "Invoice_101.pdf")
+        },
+        {
+            "received_at": "2026-09-12 11:00:00",
+            "sender": "hacker@evil.com",
+            "filename": "Malware.pdf",
+            "size_bytes": 512,
+            "status": "QUARANTINED",
+            "local_storage_path": str(tmp_path / "quarantine" / "abc123_Malware.quarantine")
+        }
+    ]
+
+    # Create dummy quarantine report
+    (tmp_path / "quarantine").mkdir(parents=True, exist_ok=True)
+    report_file = tmp_path / "quarantine" / "abc123_Malware.report.md"
+    report_file.write_text("# Threat Report", encoding="utf-8")
+
+    index_path = layout.update_master_index(entries)
+    assert index_path.exists()
+    content = index_path.read_text(encoding="utf-8")
+
+    assert "## 📊 Gateway Executive Summary" in content
+    assert "Clean Downloads" in content
+    assert "Quarantined Threats" in content
+    assert "## 📁 Sender Directory Quick-Jump" in content
+    assert "[Open Folder](./finance_vendor.com/)" in content
+    assert "[Inspect Vault](./quarantine/)" in content
+    assert "[Report](./quarantine/abc123_Malware.report.md)" in content
+
+
+def test_cli_commands_registration():
+    """Verify all required CLI commands are registered and callable."""
+    from email_ingestion.cli import cli
+    from click.testing import CliRunner
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--help"])
+    assert result.exit_code == 0
+    assert "watch" in result.output
+    assert "configure" in result.output
+    assert "demo" in result.output
+    assert "sync" in result.output
+    assert "validate" in result.output

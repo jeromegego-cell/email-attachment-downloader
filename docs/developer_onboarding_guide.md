@@ -47,7 +47,7 @@ Expected output:
 
 Run the complete test suite:
 ```bash
-# Run all 31 unit and integration tests
+# Run all 35 unit and integration tests
 pytest -v
 
 # Run open source library integration tests
