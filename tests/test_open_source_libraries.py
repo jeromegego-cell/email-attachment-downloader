@@ -169,3 +169,7 @@ def test_cli_commands_registration():
     assert "demo" in result.output
     assert "sync" in result.output
     assert "validate" in result.output
+    assert "search" in result.output
+    assert "stats" in result.output
+    assert "serve" in result.output
+    assert "export" in result.output

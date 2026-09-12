@@ -1,0 +1,32 @@
+[Unit]
+Description=Enterprise Email Ingestion Gateway Daemon
+Documentation=https://github.com/jeromegego-cell/email-attachment-downloader
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=emailuser
+Group=emailuser
+WorkingDirectory=/opt/email-ingestion
+ExecStart=/opt/email-ingestion/.venv/bin/email-ingestion watch --interval 60 --idle
+Restart=always
+RestartSec=10
+
+# Security Hardening Directives
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/email-ingestion/Auto_download_email /opt/email-ingestion/email_ingestion_state.db
+PrivateTmp=true
+NoNewPrivileges=true
+CapabilityBoundingSet=
+MemoryMax=512M
+TasksMax=100
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=email-ingestion
+
+[Install]
+WantedBy=multi-user.target

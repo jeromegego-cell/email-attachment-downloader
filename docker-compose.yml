@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  email-ingestion:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: email_ingestion_gateway
+    restart: unless-stopped
+    volumes:
+      # Mount configuration file
+      - ./config.yaml:/app/config.yaml:ro
+      # Mount persistent download directory
+      - ./Auto_download_email:/app/Auto_download_email
+      # Mount persistent SQLite ledger
+      - ./email_ingestion_state.db:/app/email_ingestion_state.db
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["watch", "--interval", "60", "--idle"]
+    healthcheck:
+      test: ["CMD", "email-ingestion", "validate"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Optional web dashboard service
+  catalog-viewer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: email_catalog_viewer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Auto_download_email:/app/Auto_download_email:ro
+    command: ["serve", "--port", "8080", "--bind", "0.0.0.0", "--no-browse"]
+    depends_on:
+      - email-ingestion

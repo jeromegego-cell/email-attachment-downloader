@@ -43,9 +43,16 @@ jobs:
         run: |
           python -m email_ingestion.cli demo
 
-      - name: Verify Master Index Generation
+      - name: Verify Master Index & HTML Dashboard Generation
         shell: bash
         run: |
           test -f Auto_download_email/INDEX.md
+          test -f Auto_download_email/index.html
           grep -q "Master Attachment Index" Auto_download_email/INDEX.md
-          echo "Master Attachment Index verified successfully."
+          grep -q "Master Attachment Catalog" Auto_download_email/index.html
+          echo "Master Attachment Index & HTML Catalog verified successfully."
+
+      - name: Verify CLI Search and Stats Commands
+        run: |
+          python -m email_ingestion.cli search "Quote"
+          python -m email_ingestion.cli stats
