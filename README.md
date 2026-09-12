@@ -8,7 +8,7 @@ An enterprise-grade, production-ready Python automation engine designed to secur
 > - [**Developer Onboarding & Extension Guide**](./docs/developer_onboarding_guide.md)
 > - [**Configuration Reference Manual**](./docs/configuration_reference.md)
 > - [**Security Operations & Threat Defense Manual**](./docs/security_operations_manual.md)
-> - [**Master Specification & Roadmap (Markdown)**](./Enterprise_Email_Ingestion_Gateway_Master_Plan.md) | [**Interactive UI (HTML)**](./Enterprise_Email_Ingestion_Gateway_Master_Plan.html)
+> - [**Master Specification & Roadmap (Markdown)**](./Enterprise_Email_Ingestion_Gateway_Master_Plan.md)
 
 ---
 
@@ -58,7 +58,9 @@ email_attachment_downloader/
 ├── requirements.txt                   # Dependency specifications
 ├── README.md                          # Documentation & Quickstart
 ├── Enterprise_Email_Ingestion_Gateway_Master_Plan.md   # Project Master Specification (Markdown)
-├── Enterprise_Email_Ingestion_Gateway_Master_Plan.html # Interactive Specification UI
+├── run.py                             # Direct source runner (Pure Python)
+├── main.py                            # Application entrypoint (Pure Python)
+├── install.py                         # Automated installer (Pure Python)
 │
 ├── Auto_download_email/               # Root downloads folder
 │   ├── INDEX.md                       # Master chronological table with clickable links

@@ -87,47 +87,6 @@ def install_dependencies():
     log_success("All dependencies installed successfully.")
 
 
-def create_launchers():
-    py_bin, _, cli_bin = get_venv_binaries()
-
-    if os.name != "nt":
-        # Create POSIX run.sh and email-ingestion symlink/wrapper
-        run_sh = REPO_ROOT / "run.sh"
-        run_sh_content = (
-            "#!/usr/bin/env bash\n"
-            "# Launcher script for Enterprise Email Ingestion Gateway\n"
-            "set -e\n"
-            f'SCRIPT_DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"\n'
-            'if [ -f "$SCRIPT_DIR/.venv/bin/email-ingestion" ]; then\n'
-            '    exec "$SCRIPT_DIR/.venv/bin/email-ingestion" "$@"\n'
-            'else\n'
-            '    exec python3 "$SCRIPT_DIR/run.py" "$@"\n'
-            'fi\n'
-        )
-        run_sh.write_text(run_sh_content, encoding="utf-8")
-        run_sh.chmod(0o755)
-
-        # Create root email-ingestion shortcut
-        cli_shortcut = REPO_ROOT / "email-ingestion"
-        cli_shortcut.write_text(run_sh_content, encoding="utf-8")
-        cli_shortcut.chmod(0o755)
-        log_success("Created executable launchers: './run.sh' and './email-ingestion'")
-    else:
-        # Create Windows run.bat
-        run_bat = REPO_ROOT / "run.bat"
-        run_bat_content = (
-            "@echo off\n"
-            "set SCRIPT_DIR=%~dp0\n"
-            'if exist "%SCRIPT_DIR%.venv\\Scripts\\email-ingestion.exe" (\n'
-            '    "%SCRIPT_DIR%.venv\\Scripts\\email-ingestion.exe" %*\n'
-            ') else (\n'
-            '    python "%SCRIPT_DIR%run.py" %*\n'
-            ')\n'
-        )
-        run_bat.write_text(run_bat_content, encoding="utf-8")
-        log_success("Created Windows launcher: 'run.bat'")
-
-
 def run_preflight_validation():
     py_bin, _, cli_bin = get_venv_binaries()
     log("Running preflight validation checks...")
@@ -152,21 +111,19 @@ def main():
     check_python_version()
     setup_virtualenv()
     install_dependencies()
-    create_launchers()
     run_preflight_validation()
 
     print("\n" + "=" * 60)
-    log_success("INSTALLATION COMPLETE & READY FOR PRODUCTION!")
+    log_success("SETUP COMPLETE & READY!")
     print("=" * 60)
-    print("\nQuick Start Commands:")
-    print("  ./run.sh configure        # Interactive email connection setup")
-    print("  ./run.sh demo             # Run full test demonstration")
-    print("  ./run.sh sync             # One-time email synchronization")
-    print("  ./run.sh watch            # Continuous 24/7 background watcher")
-    print("  ./run.sh --help           # View all available commands")
-    print("\nOr run directly via Python:")
-    print("  python3 run.py demo")
-    print("  python3 main.py validate\n")
+    print("\nQuick Start Commands (Pure Python):")
+    print("  python3 run.py configure      # Interactive email connection setup")
+    print("  python3 run.py demo           # Run test demonstration")
+    print("  python3 run.py sync           # One-time email synchronization")
+    print("  python3 run.py watch          # Continuous background watcher")
+    print("  python3 run.py validate       # Run health & preflight check")
+    print("  python3 run.py --help         # View all available CLI commands")
+    print("\n(Or alternatively use 'python3 main.py <command>')\n")
 
 
 if __name__ == "__main__":
