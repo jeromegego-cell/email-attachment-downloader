@@ -112,6 +112,7 @@ def demo_command():
     settings = get_settings()
     settings.mock_provider.enabled = True
     settings.intelligence.duplicate_detection_mode = "auto_dedupe"
+    settings.database.db_url = "sqlite:///:memory:"
     engine = EmailIngestionEngine(settings)
 
     metrics = engine.run_sync()

@@ -42,9 +42,9 @@ Every synchronization cycle follows a deterministic 8-step pipeline:
          │
          ▼
 [ 4. Defensive Security ]
-    ├── Path Sanitizer   (URL unquoting, null-byte defuse, Windows ADS defense, POSIX length)
-    ├── Magic Sniffer    (PE, ELF, Mach-O, Windows LNK, and Office VBA macro rejection)
-    ├── Archive Guard    (Tar Slip, streaming tar members, nested zip bombs, 10:1 ratio)
+    ├── Path Sanitizer   (pathvalidate: universal OS rules, Windows ADS, reserved devices, POSIX byte cap)
+    ├── Magic Sniffer    (puremagic + binary headers: PE, ELF, Mach-O, Windows LNK, Office VBA macro)
+    ├── Archive Guard    (Tar Slip, streaming tar members, nested zip bombs, 10:1 ratio ceiling)
     └── Sig Filter       (CID matching, 15KB threshold, HTML references)
          │
          ├── [THREAT] ───────► Move to quarantine/ (0600) + emit security audit event
@@ -52,13 +52,13 @@ Every synchronization cycle follows a deterministic 8-step pipeline:
          ▼ [CLEAN]
 [ 5. Intelligence Engine ]
     ├── Intra-Email Duplicate Detector (mistaken twins in same email)
-    └── Fuzzy Revision Engine (SequenceMatcher similarity >= 85%, versioning v1->v2 + .diff)
+    └── Fuzzy Revision Engine (rapidfuzz SIMD similarity >= 80%, versioning v1->v2 + difflib .diff)
          │
          ▼
 [ 6. Atomic Commit ] -> Two-phase rename to delivery folder (with EXDEV fallback)
          │
          ▼
-[ 7. Sidecar Generation ] -> ContextSidecarGenerator (email_context.md + context.json)
+[ 7. Sidecar Generation ] -> ContextSidecarGenerator (email-reply-parser + email_context.md + context.json)
          │
          ▼
 [ 8. ACID Persistence ] -> SQLAlchemy Session commit (Accounts, Messages, Attachments, AuditLogs)

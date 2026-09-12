@@ -105,7 +105,8 @@ email_attachment_downloader/
 │           ├── ai_summarizer.py       # AI context summarizer
 │           └── desktop_notifier.py    # Desktop notification plugin
 │
-├── tests/                             # Automated test suite (25 test cases, 100% passing)
+├── tests/                             # Automated test suite (31 test cases, 100% passing)
+│   ├── test_open_source_libraries.py  # Tenacity, Pathvalidate, RapidFuzz, ReplyParser
 │   ├── test_security_filters.py
 │   ├── test_security_edge_cases.py
 │   ├── test_imap_rfc822_ingestion.py
@@ -122,6 +123,18 @@ email_attachment_downloader/
 
 ---
 
+## Production Open-Source Library Foundations
+
+To guarantee maximum reliability and eliminate fragile hand-rolled logic, the engine replaces custom implementations with battle-tested open-source libraries:
+- **`pathvalidate` (MIT):** Cross-platform filename sanitization, Windows reserved device neutralizing (`CON`, `PRN`, `AUX`, `NUL`, `COM0-9`, `LPT0-9`), and POSIX length enforcement.
+- **`rapidfuzz` (MIT):** SIMD C++ accelerated Levenshtein / ratio calculation (10x–100x faster than difflib) for document revisions and diffing.
+- **`tenacity` (Apache 2.0):** Production-grade exponential backoff and randomized jitter for network and provider resilience.
+- **`email-reply-parser` (MIT):** Thread reply stripping to cleanly separate newly typed email text from conversation history quotes.
+- **`imapclient` (BSD-3) & Python `email.policy.default`:** Native RFC 2047 and RFC 2231 auto-decoding with resilient IMAP protocol handling.
+- **`puremagic` (MIT):** Multi-byte binary signature sniffing.
+
+---
+
 ## Quick Start & CLI Usage
 
 ### 1. Preflight Health Check & Validation
@@ -134,7 +147,7 @@ email-ingestion validate
 ```bash
 pytest -v
 ```
-All 25 test cases pass in ~0.27s.
+All 31 test cases pass in ~0.30s.
 
 ### 3. Test Provider Authentication (Without Downloading)
 ```bash

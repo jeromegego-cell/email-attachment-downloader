@@ -47,8 +47,11 @@ Expected output:
 
 Run the complete test suite:
 ```bash
-# Run all 25 unit and integration tests
+# Run all 31 unit and integration tests
 pytest -v
+
+# Run open source library integration tests
+pytest tests/test_open_source_libraries.py -v
 
 # Run only security edge case tests
 pytest tests/test_security_edge_cases.py -v

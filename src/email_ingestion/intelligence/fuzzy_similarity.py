@@ -1,13 +1,13 @@
 """Document similarity and revision detection engine.
 
-Compares same-name files across emails from the same sender to distinguish
-between minor revisions (v1 -> v2) and completely unrelated documents.
-Guards against CPU exhaustion by capping text comparisons to 100 KB.
+Powered by the high-performance 'rapidfuzz' library (SIMD C++ acceleration)
+and standard library 'difflib' for unified patch generation.
 """
 
 import difflib
 from pathlib import Path
 from typing import Tuple, Optional
+from rapidfuzz import fuzz
 
 
 class DocumentSimilarityEngine:
@@ -17,8 +17,8 @@ class DocumentSimilarityEngine:
         self.threshold = threshold
 
     @staticmethod
-    def _read_sample_text(file_path: Path, max_bytes: int = 102400) -> Optional[str]:
-        """Try reading a file as UTF-8 or Latin-1 text up to 100KB."""
+    def _read_sample_text(file_path: Path, max_bytes: int = 524288) -> Optional[str]:
+        """Try reading a file as UTF-8 or Latin-1 text up to 512KB."""
         try:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 return f.read(max_bytes)
@@ -43,13 +43,13 @@ class DocumentSimilarityEngine:
         new_text = self._read_sample_text(new_file_path)
 
         if orig_text is not None and new_text is not None and (orig_text or new_text):
-            matcher = difflib.SequenceMatcher(None, orig_text, new_text)
-            similarity_ratio = matcher.quick_ratio()
+            # RapidFuzz SIMD accelerated ratio (0 to 100)
+            score_pct = fuzz.ratio(orig_text, new_text)
+            similarity_ratio = score_pct / 100.0
+
             if similarity_ratio < self.threshold:
                 return False, similarity_ratio, None
 
-            # Accurate ratio
-            similarity_ratio = matcher.ratio()
             is_revision = similarity_ratio >= self.threshold
 
             # Generate unified diff text if they are similar revisions
@@ -66,10 +66,10 @@ class DocumentSimilarityEngine:
 
             return is_revision, similarity_ratio, diff_text
 
-        # For non-text / binary files, fast check to avoid O(N*M) CPU exhaustion
+        # For non-text / binary files, fast sample check
         try:
             with open(original_file_path, "rb") as f1, open(new_file_path, "rb") as f2:
-                b1 = f1.read(8192)  # Read 8KB sample
+                b1 = f1.read(8192)
                 b2 = f2.read(8192)
             if b1 == b2:
                 return True, 1.0, None

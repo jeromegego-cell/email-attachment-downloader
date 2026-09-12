@@ -25,6 +25,21 @@ class ContextSidecarGenerator:
     ]
 
     @classmethod
+    def clean_reply_text(cls, text: Optional[str]) -> str:
+        """Strip trailing quoted reply chains using battle-tested email_reply_parser."""
+        if not text:
+            return ""
+        try:
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=DeprecationWarning)
+                from email_reply_parser import EmailReplyParser
+                parsed = EmailReplyParser.parse_reply(text)
+                return parsed if parsed else text
+        except Exception:
+            return text
+
+    @classmethod
     def sanitize_body_for_privacy(cls, text: Optional[str]) -> str:
         """Mask common sensitive credentials and PII patterns from email text."""
         if not text:
@@ -70,8 +85,9 @@ class ContextSidecarGenerator:
     ) -> Tuple[Path, Path]:
         """Write both `email_context.md` and `context.json` to the target delivery folder."""
         
-        # Apply DLP sanitization to email body preview
-        sanitized_body = cls.sanitize_body_for_privacy(body_text)
+        # Clean reply history quotes, then apply DLP sanitization
+        cleaned_body = cls.clean_reply_text(body_text)
+        sanitized_body = cls.sanitize_body_for_privacy(cleaned_body)
 
         # 1. Build Machine-Readable context.json
         context_data = {

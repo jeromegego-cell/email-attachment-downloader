@@ -2,11 +2,15 @@
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
 pyyaml>=6.0.1
-puremagic>=1.20
+puremagic>=2.2.0
 tenacity>=8.2.3
 sqlalchemy>=2.0.25
 aiosqlite>=0.19.0
 click>=8.1.7
+pathvalidate>=3.3.1
+rapidfuzz>=3.9.0
+imapclient>=3.0.1
+email-reply-parser>=0.5.12
 
 # Official Cloud Provider SDKs
 msgraph-sdk>=1.0.0

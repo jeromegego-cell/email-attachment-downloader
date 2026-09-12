@@ -1,12 +1,12 @@
 """Standard IMAP / IMAP-SSL Email Connector.
 
 Connects to any standard RFC 3501 IMAP mailbox (e.g. corporate mail, Gmail IMAP,
-Outlook IMAP, Dovecot) using Python's standard `imaplib` and `email` packages.
+Outlook IMAP, Dovecot) using modern Python email policies and resilient connection handling.
 """
 
+from email import policy
+from email.header import decode_header, make_header
 import email
-from email.header import decode_header
-import imaplib
 import io
 import logging
 from datetime import datetime, timezone
@@ -37,7 +37,7 @@ class IMAPConnector(BaseEmailConnector):
         self.mailbox = mailbox
         self.use_ssl = use_ssl
         self.timeout = timeout
-        self._client: Optional[imaplib.IMAP4] = None
+        self._client: Any = None
         self._cached_payloads: Dict[str, bytes] = {}
         self._msg_id_to_mid: Dict[str, str] = {}
 
@@ -51,6 +51,7 @@ class IMAPConnector(BaseEmailConnector):
             return False
 
         try:
+            import imaplib
             if self.use_ssl:
                 self._client = imaplib.IMAP4_SSL(self.host, self.port, timeout=self.timeout)
             else:
@@ -64,24 +65,18 @@ class IMAPConnector(BaseEmailConnector):
             self._client = None
             return False
 
-    def _decode_mime_header(self, header_value: Optional[str]) -> str:
-        """Decode RFC 2047 MIME encoded headers safely."""
+    @staticmethod
+    def _decode_mime_header(header_value: Optional[str]) -> str:
+        """Decode RFC 2047 MIME encoded headers safely using standard library."""
         if not header_value:
             return ""
-        decoded_parts = []
-        for part, charset in decode_header(header_value):
-            if isinstance(part, bytes):
-                encoding = charset or "utf-8"
-                try:
-                    decoded_parts.append(part.decode(encoding, errors="replace"))
-                except LookupError:
-                    decoded_parts.append(part.decode("utf-8", errors="replace"))
-            else:
-                decoded_parts.append(str(part))
-        return "".join(decoded_parts)
+        try:
+            return str(make_header(decode_header(header_value)))
+        except Exception:
+            return str(header_value)
 
     def fetch_new_messages(self, max_messages: int = 50) -> List[EmailEnvelope]:
-        """Query unseen messages and extract attachment stubs."""
+        """Query unseen messages and extract attachment stubs using email.policy.default."""
         if not self._client:
             return []
 
@@ -92,68 +87,82 @@ class IMAPConnector(BaseEmailConnector):
                 return []
 
             msg_ids = data[0].split()
-            # Fetch up to max_messages
             selected_ids = msg_ids[-max_messages:]
 
             for mid_bytes in selected_ids:
-                mid = mid_bytes.decode()
+                mid = mid_bytes.decode() if isinstance(mid_bytes, bytes) else str(mid_bytes)
                 res, msg_data = self._client.fetch(mid, "(RFC822)")
                 if res != "OK" or not msg_data:
                     continue
 
                 raw_email = msg_data[0][1]
-                msg = email.message_from_bytes(raw_email)
+                # Modern email parsing with automatic RFC 2047/2231 decoding
+                msg = email.message_from_bytes(raw_email, policy=policy.default)
 
-                sender = self._decode_mime_header(msg.get("From", "unknown@unknown.com"))
-                subject = self._decode_mime_header(msg.get("Subject", ""))
-                msg_id = msg.get("Message-ID", f"imap_{mid}").strip("<>")
+                sender = str(msg.get("From", "unknown@unknown.com"))
+                subject = str(msg.get("Subject", ""))
+                msg_id = (msg.get("Message-ID", f"imap_{mid}") or f"imap_{mid}").strip("<>")
                 self._msg_id_to_mid[msg_id] = mid
-                thread_id = msg.get("In-Reply-To", msg.get("References", msg_id)).split()[0].strip("<>")
+                
+                in_reply = msg.get("In-Reply-To", msg.get("References", msg_id))
+                thread_id = str(in_reply).split()[0].strip("<>") if in_reply else msg_id
 
-                # Date parsing
-                date_str = msg.get("Date")
-                try:
-                    parsed_date = email.utils.parsedate_to_datetime(date_str)
-                    received_at = parsed_date.astimezone(timezone.utc)
-                except Exception:
-                    received_at = datetime.now(timezone.utc)
+                # Clean datetime extraction
+                date_hdr = msg.get("Date")
+                if hasattr(date_hdr, "datetime") and date_hdr.datetime:
+                    received_at = date_hdr.datetime.astimezone(timezone.utc)
+                else:
+                    try:
+                        received_at = email.utils.parsedate_to_datetime(str(date_hdr)).astimezone(timezone.utc)
+                    except Exception:
+                        received_at = datetime.now(timezone.utc)
 
+                # Body extraction
                 body_text = ""
                 body_html = ""
+                plain_part = msg.get_body(preferencelist=("plain",))
+                if plain_part:
+                    try:
+                        content = plain_part.get_content()
+                        if isinstance(content, str):
+                            body_text = content
+                    except Exception:
+                        pass
+
+                html_part = msg.get_body(preferencelist=("html",))
+                if html_part:
+                    try:
+                        content = html_part.get_content()
+                        if isinstance(content, str):
+                            body_html = content
+                    except Exception:
+                        pass
+
+                # Attachments extraction using modern iter_attachments()
                 attachments: List[AttachmentStub] = []
+                for part_idx, part in enumerate(msg.iter_attachments()):
+                    clean_filename = part.get_filename() or f"attachment_{part_idx}.dat"
+                    try:
+                        payload = part.get_content()
+                        if isinstance(payload, str):
+                            payload = payload.encode("utf-8")
+                    except Exception:
+                        payload = b""
 
-                # Walk multipart parts
-                part_idx = 0
-                for part in msg.walk():
-                    content_type = part.get_content_type()
-                    disposition = part.get("Content-Disposition", "")
-                    filename = part.get_filename()
+                    if payload is not None:
+                        size_bytes = len(payload)
+                        attachment_stub_id = f"{mid}_{part_idx}"
+                        self._cached_payloads[f"{msg_id}_{attachment_stub_id}"] = payload
+                        disposition = str(part.get("Content-Disposition", "") or "")
 
-                    if filename:
-                        clean_filename = self._decode_mime_header(filename)
-                        part_payload = part.get_payload(decode=True)
-                        if part_payload is not None:
-                            size_bytes = len(part_payload)
-                            attachment_stub_id = f"{mid}_{part_idx}"
-                            self._cached_payloads[f"{msg_id}_{attachment_stub_id}"] = part_payload
-
-                            attachments.append(AttachmentStub(
-                                id=attachment_stub_id,
-                                filename=clean_filename,
-                                content_type=content_type,
-                                size_bytes=size_bytes,
-                                content_disposition="attachment" if "attachment" in disposition.lower() else "inline",
-                                content_id=part.get("Content-ID", "").strip("<>")
-                            ))
-                            part_idx += 1
-                    elif content_type == "text/plain" and not body_text:
-                        payload = part.get_payload(decode=True)
-                        if payload:
-                            body_text = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
-                    elif content_type == "text/html" and not body_html:
-                        payload = part.get_payload(decode=True)
-                        if payload:
-                            body_html = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+                        attachments.append(AttachmentStub(
+                            id=attachment_stub_id,
+                            filename=clean_filename,
+                            content_type=part.get_content_type(),
+                            size_bytes=size_bytes,
+                            content_disposition="attachment" if "attachment" in disposition.lower() else "inline",
+                            content_id=str(part.get("Content-ID", "") or "").strip("<>")
+                        ))
 
                 if attachments:
                     envelopes.append(EmailEnvelope(
