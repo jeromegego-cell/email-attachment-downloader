@@ -4,11 +4,12 @@ An enterprise-grade, production-ready Python automation engine designed to secur
 
 > [!TIP]
 > **Production Documentation Suite:**
+> - [**Documentation Suite Overview & Index**](./docs/README.md)
 > - [**System Architecture & Design Guide**](./docs/architecture_guide.md)
 > - [**Developer Onboarding & Extension Guide**](./docs/developer_onboarding_guide.md)
 > - [**Configuration Reference Manual**](./docs/configuration_reference.md)
 > - [**Security Operations & Threat Defense Manual**](./docs/security_operations_manual.md)
-> - [**Master Specification & Roadmap (Markdown)**](./Enterprise_Email_Ingestion_Gateway_Master_Plan.md)
+> - [**Master Specification & Roadmap**](./docs/Enterprise_Email_Ingestion_Gateway_Master_Plan.md)
 
 ---
 
@@ -57,7 +58,6 @@ email_attachment_downloader/
 ├── pyproject.toml                     # Modern package build configuration
 ├── requirements.txt                   # Dependency specifications
 ├── README.md                          # Documentation & Quickstart
-├── Enterprise_Email_Ingestion_Gateway_Master_Plan.md   # Project Master Specification (Markdown)
 ├── run.py                             # Direct source runner (Pure Python)
 ├── main.py                            # Application entrypoint (Pure Python)
 ├── install.py                         # Automated installer (Pure Python)
@@ -107,23 +107,24 @@ email_attachment_downloader/
 │           ├── ai_summarizer.py       # AI context summarizer
 │           └── desktop_notifier.py    # Desktop notification plugin
 │
-├── tests/                             # Automated test suite (33 test cases, 100% passing)
+├── tests/                             # Automated test suite (39 test cases, 100% passing)
 │   ├── test_open_source_libraries.py  # Tenacity, Pathvalidate, RapidFuzz, ReplyParser, Executive Summary
-│   ├── test_security_filters.py
-│   ├── test_security_edge_cases.py
-│   ├── test_imap_rfc822_ingestion.py
-│   ├── test_duplicate_and_similarity.py
-│   └── test_plugins_and_engine.py
+│   ├── test_security_filters.py       # Traversal, Bidi, Unicode, Zip Slip
+│   ├── test_security_edge_cases.py    # Macro detection, LNK, active SVG, streaming tar
+│   ├── test_imap_rfc822_ingestion.py  # Multipart RFC 822 MIME parsing
+│   ├── test_duplicate_and_similarity.py # Intra-message duplicates & fuzzy diffing
+│   └── test_plugins_and_engine.py     # End-to-end sync & AI summarizer
 │
 ├── .github/workflows/                 # CI/CD Workflows
 │   └── ci.yml                         # Automated GitHub Actions test & validation matrix
 │
 └── docs/                              # Production Documentation Suite
-    ├── architecture_guide.md
-    ├── developer_onboarding_guide.md
-    ├── configuration_reference.md
-    ├── security_operations_manual.md
-    └── Enterprise_Email_Ingestion_Gateway_Master_Plan.md
+    ├── README.md                      # Documentation catalog & index
+    ├── architecture_guide.md          # Architecture & data flow
+    ├── developer_onboarding_guide.md  # Developer setup & extension guide
+    ├── configuration_reference.md     # Configuration manual
+    ├── security_operations_manual.md  # Quarantine vault triage guide
+    └── Enterprise_Email_Ingestion_Gateway_Master_Plan.md # Master Specification
 ```
 
 ---
@@ -172,38 +173,47 @@ Verify configuration syntax, database connectivity, and folder write permissions
 python3 run.py validate
 ```
 
-### 5. Run the Live Offline Demonstration
+### 4. Run the Live Offline Demonstration
+Execute the end-to-end synthetic scenario generator to verify folder creation, quarantine, and index generation:
 ```bash
-email-ingestion demo
+python3 run.py demo
 ```
 
-### 6. Synchronizing Live Mailboxes
+### 5. Synchronizing Live Mailboxes
 ```bash
 # Standard one-time synchronization
-email-ingestion sync
+python3 run.py sync
 
 # Autonomous continuous watcher mode (polls every 60 seconds)
-email-ingestion watch --interval 60
+python3 run.py watch --interval 60
 
 # Simulation mode (dry run without writing to disk or database)
-email-ingestion sync --dry-run
+python3 run.py sync --dry-run
 
 # Verbose informational logging
-email-ingestion sync --verbose
+python3 run.py sync --verbose
 
 # Detailed debug trace logging
-email-ingestion sync --debug
+python3 run.py sync --debug
 ```
 
-### 7. Inspecting State & Audit Ledger
+### 6. Inspecting State & Audit Ledger
 ```bash
-email-ingestion status
-email-ingestion audit --limit 20
+# View summary statistics of accounts, messages, and attachments
+python3 run.py status
+
+# Inspect the tamper-evident audit ledger
+python3 run.py audit --limit 20
 ```
 
-### 8. Rebuilding the Master Index
+### 7. Rebuilding the Master Index
+Rebuild `Auto_download_email/INDEX.md` from the database records at any time:
 ```bash
-email-ingestion reindex
+python3 run.py reindex
 ```
+
+> [!NOTE]
+> If you have run `install.py` to set up the local virtual environment, all commands above can also be executed using the `email-ingestion` CLI shortcut (e.g. `email-ingestion sync`).
+
 
 
