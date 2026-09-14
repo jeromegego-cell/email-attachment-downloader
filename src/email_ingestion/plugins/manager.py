@@ -5,7 +5,7 @@ Ensures that an exception in one plugin does not crash the entire ingestion loop
 """
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from email_ingestion.plugins.base_plugin import BasePlugin
 from email_ingestion.connectors.base import EmailEnvelope, AttachmentStub
 
@@ -30,6 +30,21 @@ class PluginManager:
                 p.on_email_received(envelope)
             except Exception as err:
                 logger.error(f"Plugin '{p.plugin_name}' error in on_email_received: {err}")
+
+    def should_process_envelope(self, envelope: EmailEnvelope) -> Tuple[bool, Optional[str]]:
+        """Query plugins to see if any plugin suppresses this envelope.
+        
+        Returns:
+            Tuple of (allowed: bool, vetoing_plugin_name: Optional[str])
+        """
+        for p in self._plugins:
+            try:
+                allowed = p.should_process_envelope(envelope)
+                if not allowed:
+                    return False, p.plugin_name
+            except Exception as err:
+                logger.error(f"Plugin '{p.plugin_name}' error in should_process_envelope: {err}")
+        return True, None
 
     def notify_duplicate_detected(self, duplicate_event: Dict[str, Any]) -> Optional[str]:
         """Broadcast duplicate detected event. First plugin with non-None response wins."""

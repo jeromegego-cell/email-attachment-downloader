@@ -1,0 +1,19 @@
+# ==============================================================================
+# Enterprise Email Ingestion - Excluded Senders Blacklist
+# ==============================================================================
+# One email address or wildcard pattern per line.
+# Lines starting with '#' and blank lines are ignored.
+#
+# Supported formats (powered by email-validator & wcmatch):
+#   - Exact email:       spam@spammer.com
+#   - Domain wildcard:   *@marketing.com  or  @marketing.com
+#   - Subdomain glob:    *@*.marketing.com
+#   - Prefix glob:       no-reply*@*  or  automated-system-*@*
+#   - Brace patterns:    *@{promo,newsletter,deals}.vendor.com
+# ==============================================================================
+
+# Common automated / marketing patterns
+no-reply@*
+*@newsletter.com
+*@marketing.acme.com
+notifications@github.com

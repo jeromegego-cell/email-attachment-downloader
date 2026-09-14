@@ -7,7 +7,7 @@ specific vendor SDKs or protocol variations.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, BinaryIO, Dict, Any
 
 
@@ -29,14 +29,18 @@ class EmailEnvelope:
     id: str
     account_id: str
     sender_email: str
-    sender_name: Optional[str]
-    subject: str
-    received_at: datetime
-    thread_id: Optional[str]
-    body_text: Optional[str]
-    body_html: Optional[str]
+    sender_name: Optional[str] = None
+    subject: str = ""
+    received_at: Optional[datetime] = None
+    thread_id: Optional[str] = None
+    body_text: Optional[str] = ""
+    body_html: Optional[str] = ""
     attachments: List[AttachmentStub] = field(default_factory=list)
     raw_headers: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        if self.received_at is None:
+            self.received_at = datetime.now(timezone.utc)
 
 
 class BaseEmailConnector(ABC):

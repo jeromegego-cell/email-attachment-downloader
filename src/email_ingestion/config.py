@@ -105,6 +105,19 @@ class IMAPCredentials(BaseModel):
     use_ssl: bool = True
 
 
+class FilterSettings(BaseModel):
+    """Configuration for email and sender filtering / exclusion rules."""
+    enabled: bool = Field(default=True, description="Enable sender filtering and exclusion logic.")
+    excluded_senders: List[str] = Field(
+        default_factory=list,
+        description="List of email addresses, domain wildcards (*@domain.com), or glob patterns to exclude."
+    )
+    exclude_file: Optional[str] = Field(
+        default="excluded_senders.txt",
+        description="Optional file path containing excluded senders or patterns, one per line."
+    )
+
+
 class EngineSettings(BaseSettings):
     """Master application configuration model."""
     environment: str = Field(default="development", description="Runtime environment: development or production")
@@ -112,6 +125,7 @@ class EngineSettings(BaseSettings):
     security: SecuritySettings = Field(default_factory=SecuritySettings)
     intelligence: IntelligenceSettings = Field(default_factory=IntelligenceSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    filters: FilterSettings = Field(default_factory=FilterSettings)
     
     # Providers
     mock_provider: ProviderCredentials = Field(default_factory=lambda: ProviderCredentials(enabled=True))

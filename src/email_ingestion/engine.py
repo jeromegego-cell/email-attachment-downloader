@@ -19,6 +19,7 @@ from email_ingestion.security.path_sanitizer import PathSanitizer
 from email_ingestion.security.signature_filter import SignatureFilter
 from email_ingestion.security.magic_verifier import MagicVerifier
 from email_ingestion.security.archive_guard import ArchiveGuard
+from email_ingestion.security.sender_filter import SenderFilter
 from email_ingestion.intelligence.context_sidecar import ContextSidecarGenerator
 from email_ingestion.intelligence.fuzzy_similarity import DocumentSimilarityEngine
 from email_ingestion.intelligence.duplicate_detector import DuplicateAnomalyDetector
@@ -30,6 +31,7 @@ from email_ingestion.connectors.imap_connector import IMAPConnector
 from email_ingestion.plugins.manager import PluginManager
 from email_ingestion.plugins.builtin.desktop_notifier import DesktopNotifierPlugin
 from email_ingestion.plugins.builtin.ai_summarizer import AISummarizerPlugin
+from email_ingestion.plugins.builtin.sender_filter import SenderFilterPlugin
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,10 @@ class EmailIngestionEngine:
             max_ratio=self.settings.security.max_zip_decompression_ratio,
             max_uncompressed_bytes=self.settings.security.max_attachment_size_bytes
         )
+        self.sender_filter = SenderFilter(
+            rules=self.settings.filters.excluded_senders,
+            exclude_file=self.settings.filters.exclude_file
+        )
 
         # 4. Intelligence Modules
         self.similarity_engine = DocumentSimilarityEngine(self.settings.intelligence.fuzzy_similarity_threshold)
@@ -77,6 +83,8 @@ class EmailIngestionEngine:
             self.plugin_mgr.register_plugin(DesktopNotifierPlugin())
         if "ai_summarizer" in self.settings.plugins:
             self.plugin_mgr.register_plugin(AISummarizerPlugin())
+        if "sender_filter" in self.settings.plugins:
+            self.plugin_mgr.register_plugin(SenderFilterPlugin(filter_instance=self.sender_filter))
 
     def _init_connectors(self) -> None:
         """Initialize enabled email provider connectors."""
@@ -117,7 +125,12 @@ class EmailIngestionEngine:
 
     def run_sync(self, dry_run: bool = False) -> Dict[str, int]:
         """Execute a full synchronization cycle across all configured connectors."""
-        metrics = {"messages_processed": 0, "attachments_downloaded": 0, "quarantined": 0}
+        metrics = {
+            "messages_processed": 0,
+            "attachments_downloaded": 0,
+            "quarantined": 0,
+            "senders_excluded": 0
+        }
 
         # Step 0: Sweep stale temporary files from previous aborted runs
         if not dry_run:
@@ -137,6 +150,33 @@ class EmailIngestionEngine:
                 # Deduplication Check 1: Has this message already been processed?
                 if self.db.message_exists(envelope.id):
                     logger.info(f"Skipping already-processed message: {envelope.id}")
+                    continue
+
+                # Sender Exclusion Filter Check (Pre-download)
+                if self.settings.filters.enabled:
+                    is_excluded, matched_rule = self.sender_filter.is_excluded(envelope.sender_email)
+                    if is_excluded:
+                        logger.info(
+                            f"Skipping email {envelope.id} from excluded sender '{envelope.sender_email}' "
+                            f"(matched rule: '{matched_rule}')"
+                        )
+                        if not dry_run:
+                            self.db.record_excluded_message(
+                                envelope,
+                                reason=f"Matched exclusion rule: {matched_rule}"
+                            )
+                            connector.acknowledge_processed(envelope.id)
+                        metrics["senders_excluded"] += 1
+                        continue
+
+                # Plugin Lifecycle Veto Check
+                allowed, veto_plugin = self.plugin_mgr.should_process_envelope(envelope)
+                if not allowed:
+                    logger.info(f"Skipping email {envelope.id} (vetoed by plugin: {veto_plugin})")
+                    if not dry_run:
+                        self.db.record_excluded_message(envelope, reason=f"Vetoed by plugin: {veto_plugin}")
+                        connector.acknowledge_processed(envelope.id)
+                    metrics["senders_excluded"] += 1
                     continue
 
                 try:

@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from typing import Generator, Optional
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
-from email_ingestion.database.models import Base, Message, Attachment, AuditLog
+from email_ingestion.database.models import Base, Account, Message, Attachment, AuditLog
 
 
 class DatabaseManager:
@@ -120,6 +120,39 @@ class DatabaseManager:
                 event_type=event_type,
                 event_message=message_text,
                 details_json=details_json
+            )
+            db.add(audit)
+
+    def record_excluded_message(self, envelope, reason: str = "") -> None:
+        """Record an excluded email envelope in the state ledger so it is not re-processed."""
+        with self.session() as db:
+            acc = db.query(Account).filter(Account.id == envelope.account_id).first()
+            if not acc:
+                acc = Account(
+                    id=envelope.account_id,
+                    provider=envelope.account_id.split("_")[0].upper() if "_" in envelope.account_id else "UNKNOWN",
+                    email_address=envelope.sender_email
+                )
+                db.add(acc)
+
+            db_msg = Message(
+                id=envelope.id,
+                account_id=envelope.account_id,
+                thread_id=envelope.thread_id,
+                sender_email=envelope.sender_email,
+                sender_name=envelope.sender_name,
+                subject=envelope.subject,
+                received_at=envelope.received_at,
+                status="EXCLUDED",
+                has_attachments=bool(envelope.attachments),
+                raw_body_snippet=envelope.body_text[:200] if envelope.body_text else None
+            )
+            db.add(db_msg)
+
+            audit = AuditLog(
+                message_id=envelope.id,
+                event_type="SENDER_EXCLUDED",
+                event_message=f"Skipped email from excluded sender: {envelope.sender_email}. Reason: {reason}"
             )
             db.add(audit)
 

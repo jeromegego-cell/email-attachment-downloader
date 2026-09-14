@@ -24,6 +24,8 @@ dependencies = [
     "rapidfuzz>=3.9.0",
     "sqlalchemy>=2.0.25",
     "tenacity>=8.2.3",
+    "email-validator>=2.2.0",
+    "wcmatch>=10.0",
 ]
 
 [project.optional-dependencies]
@@ -44,3 +46,8 @@ email-ingestion = "email_ingestion.cli:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-p no:launch_testing -p no:launch_testing_ros"
+testpaths = ["tests"]
+

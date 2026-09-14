@@ -26,6 +26,13 @@ class BasePlugin(ABC):
         """Hook triggered immediately after an email envelope is fetched from the provider."""
         pass
 
+    def should_process_envelope(self, envelope: EmailEnvelope) -> bool:
+        """Hook triggered to decide whether to process this email envelope.
+        
+        Return False to suppress download and skip envelope processing.
+        """
+        return True
+
     def on_attachment_scanned(
         self,
         envelope: EmailEnvelope,

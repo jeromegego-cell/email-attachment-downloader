@@ -11,6 +11,8 @@ pyyaml>=6.0.1
 rapidfuzz>=3.9.0
 sqlalchemy>=2.0.25
 tenacity>=8.2.3
+email-validator>=2.2.0
+wcmatch>=10.0
 
 # Official Cloud Provider SDKs
 msgraph-sdk>=1.0.0

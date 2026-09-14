@@ -71,6 +71,7 @@ def sync_command(config, verbose, debug, dry_run, continuous, interval):
     click.echo(f"  Messages Processed:     {metrics['messages_processed']}")
     click.echo(f"  Attachments Downloaded: {metrics['attachments_downloaded']}")
     click.echo(f"  Files Quarantined:      {metrics['quarantined']}")
+    click.echo(f"  Senders Excluded:       {metrics.get('senders_excluded', 0)}")
     if dry_run:
         click.secho("  Mode: DRY RUN (No changes written to disk or ledger)", fg="yellow")
 
@@ -323,5 +324,86 @@ def test_connection_command(config):
             click.secho(f"  [FAIL] Error connecting to {connector.provider_name}: {err}", fg="red")
 
 
+@cli.group("exclude")
+def exclude_group():
+    """Manage excluded email senders and address blacklist patterns."""
+    pass
+
+
+@exclude_group.command("list")
+@click.option("--config", "-c", type=click.Path(exists=True), help="Path to custom config.yaml")
+def exclude_list_command(config):
+    """List all active sender exclusion rules."""
+    cfg_path = Path(config) if config else None
+    settings = get_settings(cfg_path)
+    engine = EmailIngestionEngine(settings)
+    rules = engine.sender_filter.get_all_rules()
+
+    click.secho("\n=== Active Sender Exclusion Rules ===", fg="cyan", bold=True)
+    if not rules:
+        click.echo("  No exclusion rules configured.")
+        return
+
+    for idx, rule in enumerate(rules, 1):
+        click.echo(f"  {idx}. {rule}")
+    click.echo(f"\nTotal rules: {len(rules)}")
+
+
+@exclude_group.command("add")
+@click.argument("pattern")
+@click.option("--config", "-c", type=click.Path(exists=True), help="Path to custom config.yaml")
+def exclude_add_command(pattern, config):
+    """Add a new exclusion pattern (e.g. '*@spam.com' or 'no-reply@*')."""
+    cfg_path = Path(config) if config else None
+    settings = get_settings(cfg_path)
+    exclude_file = Path(settings.filters.exclude_file or "excluded_senders.txt")
+
+    engine = EmailIngestionEngine(settings)
+    engine.sender_filter.add_rule(pattern)
+    engine.sender_filter.save_to_file(exclude_file)
+    click.secho(f"Added exclusion rule '{pattern}' to {exclude_file}", fg="green", bold=True)
+
+
+@exclude_group.command("remove")
+@click.argument("pattern")
+@click.option("--config", "-c", type=click.Path(exists=True), help="Path to custom config.yaml")
+def exclude_remove_command(pattern, config):
+    """Remove an existing exclusion pattern."""
+    cfg_path = Path(config) if config else None
+    settings = get_settings(cfg_path)
+    exclude_file = Path(settings.filters.exclude_file or "excluded_senders.txt")
+
+    engine = EmailIngestionEngine(settings)
+    removed = engine.sender_filter.remove_rule(pattern)
+    if removed:
+        engine.sender_filter.save_to_file(exclude_file)
+        click.secho(f"Removed exclusion rule '{pattern}' from {exclude_file}", fg="green", bold=True)
+    else:
+        click.secho(f"Rule '{pattern}' not found in active exclusion rules.", fg="yellow")
+
+
+@exclude_group.command("test")
+@click.argument("email_address")
+@click.option("--config", "-c", type=click.Path(exists=True), help="Path to custom config.yaml")
+def exclude_test_command(email_address, config):
+    """Test whether a specific email address matches any exclusion rules."""
+    cfg_path = Path(config) if config else None
+    settings = get_settings(cfg_path)
+    engine = EmailIngestionEngine(settings)
+
+    is_excluded, matched_rule = engine.sender_filter.is_excluded(email_address)
+    norm_addr, domain = engine.sender_filter.normalize_address(email_address)
+
+    click.echo(f"\nTesting sender: {email_address}")
+    click.echo(f"  Normalized:   {norm_addr}")
+    click.echo(f"  Domain:       {domain}")
+
+    if is_excluded:
+        click.secho(f"  Result:       EXCLUDED (Matched rule: '{matched_rule}')", fg="red", bold=True)
+    else:
+        click.secho(f"  Result:       ALLOWED (Will be downloaded)", fg="green", bold=True)
+
+
 if __name__ == "__main__":
     cli()
+

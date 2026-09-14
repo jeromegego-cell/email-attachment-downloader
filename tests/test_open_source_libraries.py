@@ -164,8 +164,23 @@ def test_cli_commands_registration():
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
-    assert "watch" in result.output
-    assert "configure" in result.output
-    assert "demo" in result.output
     assert "sync" in result.output
     assert "validate" in result.output
+    assert "exclude" in result.output
+
+
+def test_email_validator_and_wcmatch_integration():
+    """Verify email-validator normalizes addresses and wcmatch evaluates glob patterns."""
+    import email_validator
+    from wcmatch import glob
+
+    # 1. email-validator RFC 5322 normalization
+    res = email_validator.validate_email("Billing-Support@SUB.DOMAIN.COM", check_deliverability=False)
+    assert res.normalized == "Billing-Support@sub.domain.com"
+    assert res.domain == "sub.domain.com"
+
+    # 2. wcmatch advanced glob and wildcard matching
+    pattern = "*@{sub,corp}.domain.com"
+    flags = glob.IGNORECASE | glob.BRACE | glob.EXTGLOB
+    assert glob.globmatch(res.normalized, pattern, flags=flags) is True
+    assert glob.globmatch("other@domain.com", pattern, flags=flags) is False

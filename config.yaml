@@ -20,17 +20,26 @@ security:
   max_zip_decompression_ratio: 10.0    # Zip bomb defense threshold (ratio > 10 is rejected)
   max_attachment_size_bytes: 104857600 # 100 MB max file size
 
-# 3. Document Intelligence & Anomaly Resolution
+# 3. Sender Filtering & Exclusion Rules (Powered by email-validator & wcmatch)
+filters:
+  enabled: true
+  excluded_senders:
+    - "no-reply@*"
+    - "*@newsletter.com"
+    - "*@marketing.acme.com"
+  exclude_file: "excluded_senders.txt"
+
+# 4. Document Intelligence & Anomaly Resolution
 intelligence:
   generate_context_sidecars: true      # Produces email_context.md and context.json
   fuzzy_similarity_threshold: 0.80     # Score >= 80% marks same-name files as revisions (v2)
   duplicate_detection_mode: "interactive" # Options: interactive, auto_dedupe, alert_only
 
-# 4. State Ledger & ACID Database
+# 5. State Ledger & ACID Database
 database:
   db_url: "sqlite:///email_ingestion_state.db"
 
-# 5. Providers
+# 6. Providers
 mock_provider:
   enabled: true                        # Enabled by default for local testing and demonstration
 
@@ -55,6 +64,8 @@ imap:
   mailbox: "INBOX"
   use_ssl: true
 
-# 6. Active Plugins
+# 7. Active Plugins
 plugins:
+  - "sender_filter"
   - "ai_summarizer"
+

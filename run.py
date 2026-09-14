@@ -24,13 +24,24 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 # If executed with system Python and a local .venv exists with installed packages,
-# ensure virtualenv site-packages are accessible
+# ensure virtualenv interpreter and site-packages are used seamlessly.
 VENV_DIR = REPO_ROOT / ".venv"
 if VENV_DIR.exists():
+    import os
+    py_bin = VENV_DIR / "bin" / "python3"
+    if not py_bin.exists():
+        py_bin = VENV_DIR / "Scripts" / "python.exe"
+    if py_bin.exists() and Path(sys.executable).resolve() != py_bin.resolve():
+        clean_env = os.environ.copy()
+        clean_env.pop("PYTHONPATH", None)
+        os.execve(str(py_bin), [str(py_bin), str(Path(__file__).resolve())] + sys.argv[1:], clean_env)
+
     import site
     for lib_dir in VENV_DIR.glob("lib/python*/site-packages"):
+        sys.path.insert(1, str(lib_dir))
         site.addsitedir(str(lib_dir))
     for win_lib in VENV_DIR.glob("Lib/site-packages"):
+        sys.path.insert(1, str(win_lib))
         site.addsitedir(str(win_lib))
 
 try:
