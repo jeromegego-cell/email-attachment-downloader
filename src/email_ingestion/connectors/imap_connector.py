@@ -87,17 +87,21 @@ class IMAPConnector(BaseEmailConnector):
                 return []
 
             msg_ids = data[0].split()
-            selected_ids = msg_ids[-max_messages:]
+            selected_ids = list(reversed(msg_ids[-max_messages:]))
 
             for mid_bytes in selected_ids:
                 mid = mid_bytes.decode() if isinstance(mid_bytes, bytes) else str(mid_bytes)
-                res, msg_data = self._client.fetch(mid, "(RFC822)")
-                if res != "OK" or not msg_data:
-                    continue
+                try:
+                    res, msg_data = self._client.fetch(mid, "(BODY.PEEK[])")
+                    if res != "OK" or not msg_data or not isinstance(msg_data[0], tuple):
+                        continue
 
-                raw_email = msg_data[0][1]
-                # Modern email parsing with automatic RFC 2047/2231 decoding
-                msg = email.message_from_bytes(raw_email, policy=policy.default)
+                    raw_email = msg_data[0][1]
+                    # Modern email parsing with automatic RFC 2047/2231 decoding
+                    msg = email.message_from_bytes(raw_email, policy=policy.default)
+                except Exception as fetch_err:
+                    logger.warning(f"Failed fetching IMAP message {mid}: {fetch_err}")
+                    continue
 
                 from_hdr = str(msg.get("From", "unknown@unknown.com"))
                 parsed_real_name, parsed_sender_addr = email.utils.parseaddr(from_hdr)
