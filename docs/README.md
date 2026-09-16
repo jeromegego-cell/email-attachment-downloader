@@ -23,5 +23,6 @@ Welcome to the documentation suite for the Enterprise Email Ingestion Gateway. B
 | [**System Specification & Architecture**](./system_specification_and_architecture.md) | Detailed component contracts, database schemas, and message envelope data models. | Specifications |
 | [**Decision Log & Milestones**](./master_project_specification_and_decision_log.md) | Architecture Decision Records (ADRs), trade-off evaluations, and milestone changelogs. | Decision Records |
 | [**Production Architecture Report**](./production_architecture_report.md) | Deep analysis of high-throughput ingestion, backpressure, failure recovery, and ACID consistency. | Architecture Report |
+| [**Folder Remote Control Architecture**](./folder_remote_control_specification_report.md) | Specification of the Zero-UI mailbox folder remote control, one-time pass semantic, and trade-off analysis. | Architecture Report |
 | [**Industrial Research & Refinement**](./industrial_research_and_refinement_report.md) | Open-source ecosystem analysis, library selection rationale (`pathvalidate`, `rapidfuzz`, `tenacity`). | Research & Evaluation |
 | [**Session Handover Summary**](./session_handover_summary.md) | Consolidated project milestones, implemented fixes, and operational state summary. | Handover & Status |

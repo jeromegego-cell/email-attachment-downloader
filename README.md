@@ -9,6 +9,7 @@ An enterprise-grade, production-ready Python automation engine designed to secur
 > - [**Developer Onboarding & Extension Guide**](./docs/developer_onboarding_guide.md)
 > - [**Configuration Reference Manual**](./docs/configuration_reference.md)
 > - [**Security Operations & Threat Defense Manual**](./docs/security_operations_manual.md)
+> - [**Folder Remote Control Architecture & Specification**](./docs/folder_remote_control_specification_report.md)
 > - [**Master Specification & Roadmap**](./docs/Enterprise_Email_Ingestion_Gateway_Master_Plan.md)
 
 ---
