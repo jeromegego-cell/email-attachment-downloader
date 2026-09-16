@@ -62,7 +62,9 @@ class EmailIngestionEngine:
         )
         self.sender_filter = SenderFilter(
             rules=self.settings.filters.excluded_senders,
-            exclude_file=self.settings.filters.exclude_file
+            exclude_file=self.settings.filters.exclude_file,
+            approved_rules=self.settings.filters.approved_senders,
+            approved_file=self.settings.filters.approved_file
         )
 
         # 4. Intelligence Modules
@@ -129,7 +131,10 @@ class EmailIngestionEngine:
             "messages_processed": 0,
             "attachments_downloaded": 0,
             "quarantined": 0,
-            "senders_excluded": 0
+            "senders_excluded": 0,
+            "senders_approved": 0,
+            "one_time_pass": 0,
+            "triaged_to_review": 0
         }
 
         # Step 0: Sweep stale temporary files from previous aborted runs
@@ -138,8 +143,23 @@ class EmailIngestionEngine:
             if purged > 0:
                 logger.info(f"Purged {purged} stale staging files from previous runs.")
 
+        ctrl = self.settings.folder_control
+
         for connector in self.connectors:
             logger.info(f"Checking for messages via provider: {connector.provider_name}")
+
+            # ------------------------------------------------------------------
+            # Phase 1: Folder Remote Control ([Blocked], [Approved], [To Download])
+            # ------------------------------------------------------------------
+            if ctrl.enabled:
+                folder_metrics = self._process_folder_control(connector, dry_run=dry_run)
+                for k, v in folder_metrics.items():
+                    if k in metrics:
+                        metrics[k] += v
+
+            # ------------------------------------------------------------------
+            # Phase 2: Standard Inbox Processing & Triage
+            # ------------------------------------------------------------------
             try:
                 envelopes = connector.fetch_new_messages()
             except Exception as conn_err:
@@ -165,6 +185,8 @@ class EmailIngestionEngine:
                                 envelope,
                                 reason=f"Matched exclusion rule: {matched_rule}"
                             )
+                            if ctrl.enabled:
+                                connector.move_message(envelope.id, ctrl.completed_folder)
                             connector.acknowledge_processed(envelope.id)
                         metrics["senders_excluded"] += 1
                         continue
@@ -175,9 +197,30 @@ class EmailIngestionEngine:
                     logger.info(f"Skipping email {envelope.id} (vetoed by plugin: {veto_plugin})")
                     if not dry_run:
                         self.db.record_excluded_message(envelope, reason=f"Vetoed by plugin: {veto_plugin}")
+                        if ctrl.enabled:
+                            connector.move_message(envelope.id, ctrl.completed_folder)
                         connector.acknowledge_processed(envelope.id)
                     metrics["senders_excluded"] += 1
                     continue
+
+                # Folder Control Triage: If sender is not on whitelist, move to review folder
+                if ctrl.enabled and ctrl.auto_triage_unknown_to_review:
+                    is_approved, _ = self.sender_filter.is_approved(envelope.sender_email)
+                    if not is_approved:
+                        logger.info(
+                            f"Unknown sender '{envelope.sender_email}' for email {envelope.id}. "
+                            f"Triaging to review folder: {ctrl.review_folder}"
+                        )
+                        if not dry_run:
+                            connector.move_message(envelope.id, ctrl.review_folder)
+                            self.db.log_audit_event(
+                                event_type="UNKNOWN_SENDER_TRIAGED_TO_REVIEW",
+                                message_text=f"Unknown sender {envelope.sender_email} moved to {ctrl.review_folder}",
+                                message_id=envelope.id
+                            )
+                            connector.acknowledge_processed(envelope.id)
+                        metrics["triaged_to_review"] += 1
+                        continue
 
                 try:
                     if not dry_run:
@@ -190,6 +233,8 @@ class EmailIngestionEngine:
                     metrics["quarantined"] += msg_metrics["quarantined"]
 
                     if not dry_run:
+                        if ctrl.enabled:
+                            connector.move_message(envelope.id, ctrl.completed_folder)
                         connector.acknowledge_processed(envelope.id)
 
                 except Exception as env_err:
@@ -207,6 +252,118 @@ class EmailIngestionEngine:
         # Step 7: Update master index table in root download directory
         if not dry_run:
             self._refresh_master_index()
+
+        return metrics
+
+    def _process_folder_control(
+        self,
+        connector: BaseEmailConnector,
+        dry_run: bool = False
+    ) -> Dict[str, int]:
+        """Process remote control folders: Blocked, Approved, and To Download (One-Time Pass)."""
+        metrics = {
+            "messages_processed": 0,
+            "attachments_downloaded": 0,
+            "quarantined": 0,
+            "senders_excluded": 0,
+            "senders_approved": 0,
+            "one_time_pass": 0
+        }
+        ctrl = self.settings.folder_control
+
+        # Ensure control folders exist
+        control_folders = [
+            ctrl.to_download_folder,
+            ctrl.approved_folder,
+            ctrl.blocked_folder,
+            ctrl.review_folder,
+            ctrl.completed_folder
+        ]
+        try:
+            connector.ensure_folders_exist(control_folders)
+        except Exception as fe:
+            logger.warning(f"Could not ensure control folders on {connector.provider_name}: {fe}")
+
+        # 1. Process [Blocked Senders] Folder
+        try:
+            blocked_envelopes = connector.fetch_messages_from_folder(ctrl.blocked_folder)
+            for env in blocked_envelopes:
+                logger.info(f"Processing email {env.id} in {ctrl.blocked_folder}: blacklisting {env.sender_email}")
+                self.sender_filter.add_rule(env.sender_email)
+                if self.settings.filters.exclude_file:
+                    self.sender_filter.save_to_file(Path(self.settings.filters.exclude_file))
+
+                if not dry_run:
+                    self.db.record_excluded_message(
+                        env,
+                        reason=f"Sender permanently blacklisted via folder: {ctrl.blocked_folder}"
+                    )
+                    self.db.log_audit_event(
+                        event_type="SENDER_BLACKLISTED_VIA_FOLDER",
+                        message_text=f"Permanently blacklisted sender {env.sender_email}",
+                        message_id=env.id
+                    )
+                    connector.move_message(env.id, ctrl.completed_folder, source_folder=ctrl.blocked_folder)
+                    connector.acknowledge_processed(env.id)
+                metrics["senders_excluded"] += 1
+        except Exception as be:
+            logger.warning(f"Error checking blocked senders folder: {be}")
+
+        # 2. Process [Approved Senders] Folder
+        try:
+            approved_envelopes = connector.fetch_messages_from_folder(ctrl.approved_folder)
+            for env in approved_envelopes:
+                logger.info(f"Processing email {env.id} in {ctrl.approved_folder}: whitelisting {env.sender_email}")
+                self.sender_filter.add_approved(env.sender_email)
+                if self.settings.filters.approved_file:
+                    self.sender_filter.save_approved_to_file(Path(self.settings.filters.approved_file))
+
+                if not self.db.message_exists(env.id):
+                    msg_metrics = self._process_envelope(connector, env, dry_run=dry_run)
+                    metrics["messages_processed"] += 1
+                    metrics["attachments_downloaded"] += msg_metrics["downloaded"]
+                    metrics["quarantined"] += msg_metrics["quarantined"]
+
+                if not dry_run:
+                    self.db.log_audit_event(
+                        event_type="SENDER_APPROVED_VIA_FOLDER",
+                        message_text=f"Permanently approved sender {env.sender_email}",
+                        message_id=env.id
+                    )
+                    connector.move_message(env.id, ctrl.completed_folder, source_folder=ctrl.approved_folder)
+                    connector.acknowledge_processed(env.id)
+                metrics["senders_approved"] += 1
+        except Exception as ae:
+            logger.warning(f"Error checking approved senders folder: {ae}")
+
+        # 3. Process [To Download] Folder (THE ONE-TIME PASS)
+        try:
+            to_download_envelopes = connector.fetch_messages_from_folder(ctrl.to_download_folder)
+            for env in to_download_envelopes:
+                logger.info(
+                    f"Processing email {env.id} in {ctrl.to_download_folder} "
+                    f"(ONE-TIME PASS: attachments downloaded without whitelisting sender {env.sender_email})"
+                )
+                if not self.db.message_exists(env.id):
+                    msg_metrics = self._process_envelope(connector, env, dry_run=dry_run)
+                    metrics["messages_processed"] += 1
+                    metrics["attachments_downloaded"] += msg_metrics["downloaded"]
+                    metrics["quarantined"] += msg_metrics["quarantined"]
+
+                if not dry_run:
+                    self.db.log_audit_event(
+                        event_type="ONE_TIME_PASS_PROCESSED",
+                        message_text=(
+                            f"One-time pass processed for message {env.id} from {env.sender_email}. "
+                            f"Sender was NOT whitelisted."
+                        ),
+                        message_id=env.id
+                    )
+                    connector.move_message(env.id, ctrl.completed_folder, source_folder=ctrl.to_download_folder)
+                    connector.acknowledge_processed(env.id)
+                metrics["one_time_pass"] += 1
+        except Exception as tde:
+            logger.warning(f"Error checking to_download folder: {tde}")
 
         return metrics
 

@@ -116,6 +116,28 @@ class FilterSettings(BaseModel):
         default="excluded_senders.txt",
         description="Optional file path containing excluded senders or patterns, one per line."
     )
+    approved_senders: List[str] = Field(
+        default_factory=list,
+        description="List of approved email addresses or domain wildcards (*@domain.com) to allow."
+    )
+    approved_file: Optional[str] = Field(
+        default="approved_senders.txt",
+        description="Optional file path containing approved senders or patterns, one per line."
+    )
+
+
+class FolderControlSettings(BaseModel):
+    """Configuration for Zero-UI 'Folder Remote Control' mailbox folders."""
+    enabled: bool = Field(default=True, description="Enable Folder Remote Control workflow.")
+    to_download_folder: str = Field(default="[To Download]", description="One-time pass: download attachments once without whitelisting.")
+    approved_folder: str = Field(default="[Approved Senders]", description="Permanent whitelist: download now and allow future emails.")
+    blocked_folder: str = Field(default="[Blocked Senders]", description="Permanent blacklist: block sender and discard attachments.")
+    review_folder: str = Field(default="[Needs Review]", description="Holding queue: unknown senders wait here for triage.")
+    completed_folder: str = Field(default="[Completed]", description="Archive folder where processed emails are moved.")
+    auto_triage_unknown_to_review: bool = Field(
+        default=False,
+        description="If True, incoming emails from unknown senders in Inbox are automatically moved to review_folder."
+    )
 
 
 class EngineSettings(BaseSettings):
@@ -126,6 +148,7 @@ class EngineSettings(BaseSettings):
     intelligence: IntelligenceSettings = Field(default_factory=IntelligenceSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     filters: FilterSettings = Field(default_factory=FilterSettings)
+    folder_control: FolderControlSettings = Field(default_factory=FolderControlSettings)
     
     # Providers
     mock_provider: ProviderCredentials = Field(default_factory=lambda: ProviderCredentials(enabled=True))

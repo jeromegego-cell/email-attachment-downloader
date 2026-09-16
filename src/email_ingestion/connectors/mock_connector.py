@@ -184,3 +184,60 @@ class MockEmailConnector(BaseEmailConnector):
     def acknowledge_processed(self, message_id: str) -> None:
         """Mark the message as delivered to avoid infinite loops in test runs."""
         self._delivered_message_ids.add(message_id)
+
+    def ensure_folders_exist(self, folders: List[str]) -> None:
+        """Ensure simulated folders exist."""
+        if not hasattr(self, "_folders"):
+            self._folders: Dict[str, List[EmailEnvelope]] = {}
+        for f in folders:
+            if f not in self._folders:
+                self._folders[f] = []
+
+    def move_message(
+        self,
+        message_id: str,
+        target_folder: str,
+        source_folder: Optional[str] = None
+    ) -> bool:
+        """Simulate moving a message between folders."""
+        if not hasattr(self, "_folders"):
+            self._folders: Dict[str, List[EmailEnvelope]] = {}
+        if target_folder not in self._folders:
+            self._folders[target_folder] = []
+
+        moved_env = None
+        if source_folder and source_folder in self._folders:
+            for i, env in enumerate(self._folders[source_folder]):
+                if env.id == message_id:
+                    moved_env = self._folders[source_folder].pop(i)
+                    break
+        else:
+            for s_name, env_list in self._folders.items():
+                for i, env in enumerate(env_list):
+                    if env.id == message_id:
+                        moved_env = env_list.pop(i)
+                        break
+                if moved_env:
+                    break
+
+        if moved_env:
+            self._folders[target_folder].append(moved_env)
+        return True
+
+    def fetch_messages_from_folder(
+        self,
+        folder_name: str,
+        max_messages: int = 50
+    ) -> List[EmailEnvelope]:
+        """Fetch messages currently queued in a simulated folder."""
+        if not hasattr(self, "_folders"):
+            self._folders: Dict[str, List[EmailEnvelope]] = {}
+        return list(self._folders.get(folder_name, []))[:max_messages]
+
+    def place_message_in_folder(self, folder_name: str, envelope: EmailEnvelope) -> None:
+        """Helper for tests/demos to place an envelope into a designated folder."""
+        if not hasattr(self, "_folders"):
+            self._folders: Dict[str, List[EmailEnvelope]] = {}
+        if folder_name not in self._folders:
+            self._folders[folder_name] = []
+        self._folders[folder_name].append(envelope)

@@ -75,3 +75,24 @@ class BaseEmailConnector(ABC):
     def acknowledge_processed(self, message_id: str) -> None:
         """Optionally apply a label or update the provider state after successful processing."""
         pass
+
+    def ensure_folders_exist(self, folders: List[str]) -> None:
+        """Ensure designated automation control folders or labels exist in the mailbox."""
+        pass
+
+    def move_message(
+        self,
+        message_id: str,
+        target_folder: str,
+        source_folder: Optional[str] = None
+    ) -> bool:
+        """Move an email message from a source folder/label to a target folder/label."""
+        return False
+
+    def fetch_messages_from_folder(
+        self,
+        folder_name: str,
+        max_messages: int = 50
+    ) -> List[EmailEnvelope]:
+        """Fetch email envelopes from a designated mailbox folder or label."""
+        return []

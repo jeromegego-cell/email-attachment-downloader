@@ -28,6 +28,19 @@ filters:
     - "*@newsletter.com"
     - "*@marketing.acme.com"
   exclude_file: "excluded_senders.txt"
+  approved_senders:
+    - "*@acme-corp.com"
+  approved_file: "approved_senders.txt"
+
+# 3b. Zero-UI Folder Remote Control (Outlook Folders / Gmail Labels)
+folder_control:
+  enabled: true
+  to_download_folder: "[To Download]"      # One-time pass: downloads files once without whitelisting
+  approved_folder: "[Approved Senders]"    # Permanent whitelist: downloads and allows all future emails
+  blocked_folder: "[Blocked Senders]"      # Permanent blacklist: blocks sender forever
+  review_folder: "[Needs Review]"          # Holding queue: unverified senders wait here
+  completed_folder: "[Completed]"          # Archive: processed emails are moved here
+  auto_triage_unknown_to_review: false
 
 # 4. Document Intelligence & Anomaly Resolution
 intelligence:

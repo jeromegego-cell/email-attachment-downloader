@@ -404,6 +404,86 @@ def exclude_test_command(email_address, config):
         click.secho(f"  Result:       ALLOWED (Will be downloaded)", fg="green", bold=True)
 
 
+@cli.group("allow")
+def allow_group():
+    """Manage approved email senders and address whitelist patterns."""
+    pass
+
+
+@allow_group.command("list")
+@click.option("--config", "-c", type=click.Path(exists=True), help="Path to custom config.yaml")
+def allow_list_command(config):
+    """List all active approved sender whitelist rules."""
+    cfg_path = Path(config) if config else None
+    settings = get_settings(cfg_path)
+    engine = EmailIngestionEngine(settings)
+    rules = engine.sender_filter.get_all_approved()
+
+    click.secho("\n=== Active Approved Sender Whitelist Rules ===", fg="green", bold=True)
+    if not rules:
+        click.echo("  No approved whitelist rules configured.")
+        return
+
+    for idx, rule in enumerate(rules, 1):
+        click.echo(f"  {idx}. {rule}")
+    click.echo(f"\nTotal rules: {len(rules)}")
+
+
+@allow_group.command("add")
+@click.argument("pattern")
+@click.option("--config", "-c", type=click.Path(exists=True), help="Path to custom config.yaml")
+def allow_add_command(pattern, config):
+    """Add a new approved sender pattern (e.g. '*@trusted-partner.com' or 'partner@client.com')."""
+    cfg_path = Path(config) if config else None
+    settings = get_settings(cfg_path)
+    approved_file = Path(settings.filters.approved_file or "approved_senders.txt")
+
+    engine = EmailIngestionEngine(settings)
+    engine.sender_filter.add_approved(pattern)
+    engine.sender_filter.save_approved_to_file(approved_file)
+    click.secho(f"Added approved rule '{pattern}' to {approved_file}", fg="green", bold=True)
+
+
+@allow_group.command("remove")
+@click.argument("pattern")
+@click.option("--config", "-c", type=click.Path(exists=True), help="Path to custom config.yaml")
+def allow_remove_command(pattern, config):
+    """Remove an existing approved sender pattern."""
+    cfg_path = Path(config) if config else None
+    settings = get_settings(cfg_path)
+    approved_file = Path(settings.filters.approved_file or "approved_senders.txt")
+
+    engine = EmailIngestionEngine(settings)
+    removed = engine.sender_filter.remove_approved(pattern)
+    if removed:
+        engine.sender_filter.save_approved_to_file(approved_file)
+        click.secho(f"Removed approved rule '{pattern}' from {approved_file}", fg="green", bold=True)
+    else:
+        click.secho(f"Rule '{pattern}' not found in active approved rules.", fg="yellow")
+
+
+@allow_group.command("test")
+@click.argument("email_address")
+@click.option("--config", "-c", type=click.Path(exists=True), help="Path to custom config.yaml")
+def allow_test_command(email_address, config):
+    """Test whether a specific email address matches any approved whitelist rules."""
+    cfg_path = Path(config) if config else None
+    settings = get_settings(cfg_path)
+    engine = EmailIngestionEngine(settings)
+
+    is_app, matched_rule = engine.sender_filter.is_approved(email_address)
+    norm_addr, domain = engine.sender_filter.normalize_address(email_address)
+
+    click.echo(f"\nTesting sender: {email_address}")
+    click.echo(f"  Normalized:   {norm_addr}")
+    click.echo(f"  Domain:       {domain}")
+
+    if is_app:
+        click.secho(f"  Result:       APPROVED / WHITELISTED (Matched rule: '{matched_rule}')", fg="green", bold=True)
+    else:
+        click.secho(f"  Result:       NOT WHITELISTED", fg="yellow", bold=True)
+
+
 if __name__ == "__main__":
     cli()
 

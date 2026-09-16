@@ -1,0 +1,17 @@
+# ==============================================================================
+# Enterprise Email Ingestion - Approved Senders Whitelist
+# ==============================================================================
+# One email address or wildcard pattern per line.
+# Lines starting with '#' and blank lines are ignored.
+#
+# Senders listed here (or added by moving an email to '[Approved Senders]')
+# are automatically permitted to process attachments without manual approval.
+#
+# Supported formats (powered by email-validator & wcmatch):
+#   - Exact email:       partner@client.com
+#   - Domain wildcard:   *@acme-corp.com  or  @acme-corp.com
+#   - Subdomain glob:    *@*.trustedpartner.com
+# ==============================================================================
+
+# Trusted corporate & vendor domains
+*@acme-corp.com
