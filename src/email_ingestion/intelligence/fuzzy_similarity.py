@@ -18,10 +18,14 @@ class DocumentSimilarityEngine:
 
     @staticmethod
     def _read_sample_text(file_path: Path, max_bytes: int = 524288) -> Optional[str]:
-        """Try reading a file as UTF-8 or Latin-1 text up to 512KB."""
+        """Try reading a file as UTF-8 text up to 512KB. Returns None for binary files."""
         try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                return f.read(max_bytes)
+            with open(file_path, "rb") as f:
+                raw = f.read(max_bytes)
+            # Fast binary check: null bytes indicate binary files
+            if b"\x00" in raw:
+                return None
+            return raw.decode("utf-8")
         except Exception:
             return None
 

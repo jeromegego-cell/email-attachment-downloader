@@ -38,7 +38,7 @@ class GmailConnector(BaseEmailConnector):
             if self.credentials_json and Path(self.credentials_json).exists():
                 creds = service_account.Credentials.from_service_account_file(
                     self.credentials_json,
-                    scopes=["https://www.googleapis.com/auth/gmail.readonly"]
+                    scopes=["https://www.googleapis.com/auth/gmail.modify"]
                 )
                 self._service = build("gmail", "v1", credentials=creds)
                 return True

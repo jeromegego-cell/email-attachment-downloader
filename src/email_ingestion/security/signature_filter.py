@@ -26,9 +26,14 @@ class SignatureFilter:
         """Extract all Content-ID (CID) strings referenced in `<img src="cid:...">` tags."""
         if not html_body:
             return set()
-        # Find matches like cid:image001.png@01D78F...
-        matches = re.findall(r'<img[^>]+src=["\']cid:([^"\'@>]+)(?:@[^"\'>]+)?["\']', html_body, re.IGNORECASE)
-        return {m.strip("<>").lower() for m in matches}
+        cids = set()
+        for m in re.findall(r'<img[^>]+src=["\']cid:([^"\' >]+)["\']', html_body, re.IGNORECASE):
+            cleaned = m.strip("<> ").lower()
+            if cleaned:
+                cids.add(cleaned)
+                if "@" in cleaned:
+                    cids.add(cleaned.split("@")[0])
+        return cids
 
     def is_signature_attachment(
         self,
@@ -51,7 +56,7 @@ class SignatureFilter:
         # Rule 1: Inline image referenced in HTML body via CID
         if "inline" in clean_disposition and clean_cid and html_body:
             cids_in_html = self.extract_cids_from_html(html_body)
-            if clean_cid in cids_in_html:
+            if clean_cid in cids_in_html or clean_cid.split("@")[0] in cids_in_html:
                 return True
 
         # Rule 2: Small image file (< threshold) matching common logo/signature filename patterns

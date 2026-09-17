@@ -56,7 +56,8 @@ class ArchiveGuard:
                     filename = info.filename.replace("\\", "/")
 
                     # 1. Zip Slip check (traversal tokens, root slashes, Windows drive letters, null bytes)
-                    if ".." in filename or filename.startswith("/") or re.match(r"^[a-zA-Z]:", filename) or "\x00" in filename:
+                    has_traversal = any(p == ".." for p in Path(filename).parts)
+                    if has_traversal or filename.startswith("/") or re.match(r"^[a-zA-Z]:", filename) or "\x00" in filename:
                         return False, f"Zip Slip path traversal detected: {info.filename}"
 
                     # 2. Symlink check via POSIX external_attr (prevents symlink-based traversal)
@@ -78,7 +79,7 @@ class ArchiveGuard:
                     return False, f"Archive uncompressed size ({total_uncompressed} bytes) exceeds limit ({self.max_uncompressed_bytes} bytes)"
 
                 # 5. Overlapping header bomb defense: compute ratio against physical file size
-                ratio = total_uncompressed / physical_size
+                ratio = total_uncompressed / max(physical_size, 1)
                 if ratio > self.max_ratio:
                     return False, f"Zip bomb pattern detected! Physical ratio {ratio:.1f}:1 exceeds safe threshold {self.max_ratio}:1"
 
@@ -108,7 +109,8 @@ class ArchiveGuard:
                     filename = member.name.replace("\\", "/")
 
                     # Tar Slip check (traversal tokens, root slashes, Windows drive letters, null bytes)
-                    if ".." in filename or filename.startswith("/") or re.match(r"^[a-zA-Z]:", filename) or "\x00" in filename:
+                    has_traversal = any(p == ".." for p in Path(filename).parts)
+                    if has_traversal or filename.startswith("/") or re.match(r"^[a-zA-Z]:", filename) or "\x00" in filename:
                         return False, f"Tar Slip path traversal detected: {member.name}"
 
                     # Symlink / Hardlink / Device Node check

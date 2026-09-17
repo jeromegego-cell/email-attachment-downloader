@@ -401,6 +401,7 @@ class EmailIngestionEngine:
         try:
             # Step 1: Pre-download inspection and chunked staging
             staged_items: List[Dict[str, Any]] = []
+            seen_filenames: set[str] = set()
 
             for att_stub in envelope.attachments:
                 # Check for signature icons
@@ -417,6 +418,19 @@ class EmailIngestionEngine:
                         continue
 
                 safe_filename = PathSanitizer.sanitize_filename(att_stub.filename)
+
+                # Disambiguate duplicate filenames within the same email to prevent overwriting
+                if safe_filename in seen_filenames:
+                    p = Path(safe_filename)
+                    stem, suffix = p.stem, p.suffix
+                    counter = 1
+                    candidate = f"{stem}_{counter}{suffix}"
+                    while candidate in seen_filenames or (envelope_dir / candidate).exists():
+                        counter += 1
+                        candidate = f"{stem}_{counter}{suffix}"
+                    safe_filename = candidate
+                seen_filenames.add(safe_filename)
+
                 target_path = envelope_dir / safe_filename
 
                 if dry_run:
@@ -647,12 +661,15 @@ class EmailIngestionEngine:
             with self.db.session() as session:
                 acc = session.query(Account).filter(Account.id == envelope.account_id).first()
                 if not acc:
-                    acc = Account(
-                        id=envelope.account_id,
-                        provider=connector.provider_name,
-                        email_address=envelope.sender_email
-                    )
-                    session.add(acc)
+                    acc_email = f"{envelope.account_id}@local"
+                    acc = session.query(Account).filter(Account.email_address == acc_email).first()
+                    if not acc:
+                        acc = Account(
+                            id=envelope.account_id,
+                            provider=connector.provider_name,
+                            email_address=acc_email
+                        )
+                        session.add(acc)
 
                 db_msg = Message(
                     id=envelope.id,

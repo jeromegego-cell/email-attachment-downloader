@@ -128,12 +128,15 @@ class DatabaseManager:
         with self.session() as db:
             acc = db.query(Account).filter(Account.id == envelope.account_id).first()
             if not acc:
-                acc = Account(
-                    id=envelope.account_id,
-                    provider=envelope.account_id.split("_")[0].upper() if "_" in envelope.account_id else "UNKNOWN",
-                    email_address=envelope.sender_email
-                )
-                db.add(acc)
+                acc_email = f"{envelope.account_id}@local"
+                acc = db.query(Account).filter(Account.email_address == acc_email).first()
+                if not acc:
+                    acc = Account(
+                        id=envelope.account_id,
+                        provider=envelope.account_id.split("_")[0].upper() if "_" in envelope.account_id else "UNKNOWN",
+                        email_address=acc_email
+                    )
+                    db.add(acc)
 
             db_msg = Message(
                 id=envelope.id,

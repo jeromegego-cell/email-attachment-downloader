@@ -94,8 +94,8 @@ class MagicVerifier:
             if header.startswith(b"\x4c\x00\x00\x00\x01\x14\x02\x00"):
                 return False, "application/x-ms-shortcut", "Windows LNK shortcut file detected"
 
-            # Check for embedded script execution in text/markup formats (scan up to 2MB to prevent truncation bypass)
-            if file_ext in {".svg", ".html", ".htm", ".xml", ".txt"}:
+            # Check for embedded script execution in markup/browser formats (scan up to 2MB to prevent truncation bypass)
+            if file_ext in {".svg", ".html", ".htm", ".xml"}:
                 with open(file_path, "rb") as f_text:
                     sample = f_text.read(2097152).lower()
                 dangerous_tags = [
@@ -106,11 +106,12 @@ class MagicVerifier:
                 if any(tag in sample for tag in dangerous_tags):
                     return False, "text/html", f"Active script execution payload detected in {file_ext}"
 
-            # Check for PDF active code execution (/JavaScript, /Launch, /EmbeddedFiles) (scan up to 5MB to prevent truncation bypass)
+            # Check for PDF active code execution (/JavaScript, /Launch) (scan up to 5MB to prevent truncation bypass)
+            # Note: /EmbeddedFiles is allowed as it is required by official EU ZUGFeRD/Factur-X e-invoicing standards
             if file_ext == ".pdf" and b"%PDF-" in header:
                 with open(file_path, "rb") as f_pdf:
                     pdf_sample = f_pdf.read(5242880).lower()
-                if any(x in pdf_sample for x in [b"/javascript", b"/js ", b"/launch", b"/embeddedfiles"]):
+                if any(x in pdf_sample for x in [b"/javascript", b"/js ", b"/launch"]):
                     return False, "application/pdf", "Dangerous active script or /Launch action embedded in PDF"
 
             # Check for legacy Office OLE compound document VBA macros (.doc, .xls, .ppt)

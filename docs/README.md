@@ -25,4 +25,5 @@ Welcome to the documentation suite for the Enterprise Email Ingestion Gateway. B
 | [**Production Architecture Report**](./production_architecture_report.md) | Deep analysis of high-throughput ingestion, backpressure, failure recovery, and ACID consistency. | Architecture Report |
 | [**Folder Remote Control Architecture**](./folder_remote_control_specification_report.md) | Specification of the Zero-UI mailbox folder remote control, one-time pass semantic, and trade-off analysis. | Architecture Report |
 | [**Industrial Research & Refinement**](./industrial_research_and_refinement_report.md) | Open-source ecosystem analysis, library selection rationale (`pathvalidate`, `rapidfuzz`, `tenacity`). | Research & Evaluation |
+| [**Executive Briefing for Leadership**](./executive_report_for_leadership.md) | Executive briefing memo, business ROI, Zero-UI one-time pass analysis, and pilot proposal ready to email to leadership. | Executive Briefing |
 | [**Session Handover Summary**](./session_handover_summary.md) | Consolidated project milestones, implemented fixes, and operational state summary. | Handover & Status |
